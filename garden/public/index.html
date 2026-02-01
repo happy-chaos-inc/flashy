@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Fridge</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      background: #0a0a0a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow: hidden;
+    }
+    
+    #fridge {
+      position: relative;
+      width: 340px;
+      height: 680px;
+      background: linear-gradient(180deg, #e8e8e8 0%, #d4d4d4 100%);
+      border-radius: 12px;
+      box-shadow:
+        inset 0 2px 4px rgba(255,255,255,0.8),
+        inset 0 -2px 4px rgba(0,0,0,0.1),
+        0 20px 60px rgba(0,0,0,0.5),
+        0 0 0 4px #888,
+        0 0 0 6px #666;
+      overflow: hidden;
+    }
+    
+    /* Fridge interior shelves */
+    .shelf {
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      height: 3px;
+      background: linear-gradient(180deg, #ccc 0%, #aaa 100%);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    
+    .shelf:nth-child(1) { top: 20%; }
+    .shelf:nth-child(2) { top: 45%; }
+    .shelf:nth-child(3) { top: 70%; }
+    
+    /* Door shelves on sides */
+    .door-shelf {
+      position: absolute;
+      width: 40px;
+      background: linear-gradient(90deg, rgba(200,200,200,0.5) 0%, transparent 100%);
+      border-radius: 4px;
+    }
+    
+    .door-shelf.left { left: 0; }
+    .door-shelf.right { 
+      right: 0; 
+      background: linear-gradient(-90deg, rgba(200,200,200,0.5) 0%, transparent 100%);
+    }
+    
+    /* Cool light effect */
+    #fridge::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, rgba(200,230,255,0.3) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    
+    #garden {
+      position: absolute;
+      inset: 0;
+      cursor: grab;
+    }
+    
+    #garden:active { cursor: grabbing; }
+    
+    /* UI */
+    #ui {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(10px);
+      padding: 8px 16px;
+      border-radius: 24px;
+      z-index: 100;
+    }
+    
+    #trash {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, transparent 50%, rgba(255,59,48,0.3) 50%);
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-end;
+      padding: 12px;
+      transition: background 0.15s;
+      pointer-events: none;
+    }
+    
+    #trash.active {
+      background: linear-gradient(135deg, transparent 30%, rgba(255,59,48,0.7) 30%);
+    }
+    
+    #trash svg {
+      width: 24px;
+      height: 24px;
+      stroke: rgba(255,255,255,0.5);
+      fill: none;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    
+    #trash.active svg {
+      stroke: #fff;
+    }
+    
+    #userCount {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      color: rgba(255,255,255,0.9);
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(10px);
+      padding: 6px 12px;
+      border-radius: 12px;
+      z-index: 100;
+      letter-spacing: 0.3px;
+    }
+    
+    #addBtn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: none;
+      background: #fff;
+      color: #000;
+      font-size: 24px;
+      font-weight: 300;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    
+    #addBtn:hover { 
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    
+    #addBtn:active { transform: scale(0.95); }
+    
+    /* Sketchboard modal */
+    #sketchModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(20px);
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      gap: 20px;
+      z-index: 1000;
+    }
+    
+    #sketchModal.open { display: flex; }
+    
+    #sketchContainer {
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    
+    #sketchboard {
+      background: #fff;
+      cursor: crosshair;
+      display: block;
+    }
+    
+    #sketchControls {
+      display: flex;
+      gap: 12px;
+    }
+    
+    #sketchControls button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 24px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: transform 0.15s, opacity 0.15s;
+    }
+    
+    #sketchControls button:hover { transform: scale(1.02); }
+    #sketchControls button:active { transform: scale(0.98); }
+    
+    #submitSketch { 
+      background: #fff;
+      color: #000;
+    }
+    
+    #cancelSketch { 
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+    }
+    
+    #clearSketch { 
+      background: rgba(255,100,100,0.3);
+      color: #fff;
+    }
+    
+    /* Brush size */
+    #brushControls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    #brushSize {
+      -webkit-appearance: none;
+      width: 100px;
+      height: 4px;
+      background: rgba(255,255,255,0.3);
+      border-radius: 2px;
+      outline: none;
+    }
+    
+    #brushSize::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    
+    #brushPreview {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    #brushDot {
+      background: #fff;
+      border-radius: 50%;
+    }
+    
+    /* Color picker */
+    #colorPicker {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .color-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: transform 0.15s, border-color 0.15s;
+    }
+    
+    .color-btn:hover { transform: scale(1.1); }
+    .color-btn.active { border-color: #fff; }
+
+    /* Join Modal */
+    #joinModal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.95);
+      backdrop-filter: blur(20px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+    }
+
+    #joinModal.hidden { display: none; }
+
+    .join-card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 24px;
+      padding: 40px;
+      max-width: 400px;
+      width: calc(100% - 40px);
+    }
+
+    .join-card h2 {
+      color: #fff;
+      font-size: 24px;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+
+    .join-card .room-name {
+      color: rgba(255,255,255,0.6);
+      font-size: 14px;
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .join-form-group {
+      margin-bottom: 20px;
+    }
+
+    .join-form-group label {
+      display: block;
+      color: rgba(255,255,255,0.8);
+      font-size: 14px;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    .join-form-group input {
+      width: 100%;
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 12px;
+      color: #fff;
+      font-size: 16px;
+    }
+
+    .join-form-group input:focus {
+      outline: none;
+      background: rgba(255,255,255,0.12);
+      border-color: rgba(255,255,255,0.3);
+    }
+
+    .join-form-group input::placeholder {
+      color: rgba(255,255,255,0.4);
+    }
+
+    #joinBtn {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    #joinBtn:hover {
+      transform: translateY(-2px);
+    }
+
+    #joinBtn:active {
+      transform: translateY(0);
+    }
+
+    #joinError {
+      color: #ff3b30;
+      font-size: 14px;
+      text-align: center;
+      margin-top: 12px;
+      display: none;
+    }
+
+    #joinError.show {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="fridge">
+    <div class="shelf"></div>
+    <div class="shelf"></div>
+    <div class="shelf"></div>
+    <canvas id="garden" width="340" height="680"></canvas>
+    <span id="userCount">0 online</span>
+    <div id="ui">
+      <button id="addBtn">+</button>
+    </div>
+    <div id="trash">
+      <svg viewBox="0 0 24 24">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+      </svg>
+    </div>
+  </div>
+
+  <div id="joinModal">
+    <div class="join-card">
+      <h2>Join Fridge</h2>
+      <div class="room-name" id="joinRoomName">Loading...</div>
+      <div class="join-form-group">
+        <label>Username</label>
+        <input type="text" id="joinUsername" placeholder="Enter your name" maxlength="20">
+      </div>
+      <div class="join-form-group" id="passwordGroup">
+        <label id="passwordLabel">Password</label>
+        <input type="password" id="joinPassword" placeholder="Enter password">
+      </div>
+      <button id="joinBtn">Continue</button>
+      <div id="joinError"></div>
+    </div>
+  </div>
+
+  <div id="sketchModal">
+    <div id="brushControls">
+      <div id="colorPicker">
+        <button class="color-btn active" data-color="#000000" style="background:#000"></button>
+        <button class="color-btn" data-color="#ff3b30" style="background:#ff3b30"></button>
+        <button class="color-btn" data-color="#ff9500" style="background:#ff9500"></button>
+        <button class="color-btn" data-color="#34c759" style="background:#34c759"></button>
+        <button class="color-btn" data-color="#007aff" style="background:#007aff"></button>
+        <button class="color-btn" data-color="#af52de" style="background:#af52de"></button>
+      </div>
+      <input type="range" id="brushSize" min="2" max="20" value="4">
+      <div id="brushPreview"><div id="brushDot"></div></div>
+    </div>
+    <div id="sketchContainer">
+      <canvas id="sketchboard" width="200" height="200"></canvas>
+    </div>
+    <div id="sketchControls">
+      <button id="clearSketch">Clear</button>
+      <button id="cancelSketch">Cancel</button>
+      <button id="submitSketch">Stick it</button>
+    </div>
+  </div>
+
+  <script>
+    // --- Config ---
+    const CANVAS_W = 340
+    const CANVAS_H = 680
+    const SKETCH_SIZE = 200
+    
+    // --- State ---
+    let sketches = []
+    let dragging = null
+    let dragOffset = { x: 0, y: 0 }
+    let currentColor = '#000000'
+    let currentBrushSize = 4
+    
+    // --- Elements ---
+    const garden = document.getElementById('garden')
+    const gardenCtx = garden.getContext('2d')
+    const sketchboard = document.getElementById('sketchboard')
+    const sketchCtx = sketchboard.getContext('2d')
+    const modal = document.getElementById('sketchModal')
+    const userCountEl = document.getElementById('userCount')
+    const brushSizeEl = document.getElementById('brushSize')
+    const brushDotEl = document.getElementById('brushDot')
+    const trashEl = document.getElementById('trash')
+    const joinModal = document.getElementById('joinModal')
+    const joinUsernameEl = document.getElementById('joinUsername')
+    const joinPasswordEl = document.getElementById('joinPassword')
+    const joinBtnEl = document.getElementById('joinBtn')
+    const joinErrorEl = document.getElementById('joinError')
+    const joinRoomNameEl = document.getElementById('joinRoomName')
+    const passwordGroupEl = document.getElementById('passwordGroup')
+
+    // --- Room Management ---
+    let roomId = null
+    let username = null
+    let roomInfo = null
+    let ws = null
+
+    // Extract room ID from URL
+    const pathParts = window.location.pathname.split('/')
+    if (pathParts[1] === 'r' && pathParts[2]) {
+      roomId = pathParts[2]
+    } else {
+      window.location.href = '/'
+    }
+
+    // Fetch room info and show join modal
+    async function loadRoom() {
+      try {
+        const response = await fetch(`/api/rooms/${roomId}`)
+        if (!response.ok) {
+          joinErrorEl.textContent = 'Room not found'
+          joinErrorEl.classList.add('show')
+          return
+        }
+        roomInfo = await response.json()
+        joinRoomNameEl.textContent = roomInfo.name
+      } catch (err) {
+        joinErrorEl.textContent = 'Error loading room'
+        joinErrorEl.classList.add('show')
+      }
+    }
+
+    // Check if username exists in room
+    async function checkUsername(username) {
+      try {
+        const response = await fetch(`/api/rooms/${roomId}/check-user?username=${encodeURIComponent(username)}`)
+        if (!response.ok) return null
+        const data = await response.json()
+        return data
+      } catch (err) {
+        return null
+      }
+    }
+
+    // Join room handler
+    joinBtnEl.addEventListener('click', async () => {
+      username = joinUsernameEl.value.trim()
+      const password = joinPasswordEl.value.trim()
+
+      if (!username) {
+        joinErrorEl.textContent = 'Please enter a username'
+        joinErrorEl.classList.add('show')
+        return
+      }
+
+      if (!password) {
+        joinErrorEl.textContent = 'Please enter a password'
+        joinErrorEl.classList.add('show')
+        return
+      }
+
+      joinErrorEl.classList.remove('show')
+      joinBtnEl.disabled = true
+      joinBtnEl.textContent = 'Joining...'
+
+      // Check if username exists
+      const userCheck = await checkUsername(username)
+      const isNewUser = userCheck ? !userCheck.exists : true
+
+      connectWebSocket(username, password, isNewUser)
+    })
+
+    // Update UI based on username availability
+    let checkTimeout = null
+    joinUsernameEl.addEventListener('input', async (e) => {
+      const username = e.target.value.trim()
+
+      clearTimeout(checkTimeout)
+
+      if (!username) {
+        document.getElementById('passwordLabel').textContent = 'Password'
+        return
+      }
+
+      checkTimeout = setTimeout(async () => {
+        const userCheck = await checkUsername(username)
+        if (userCheck) {
+          if (userCheck.exists) {
+            document.getElementById('passwordLabel').textContent = 'Password (Login)'
+            if (userCheck.isOnline) {
+              joinErrorEl.textContent = 'This user is currently online'
+              joinErrorEl.classList.add('show')
+            } else {
+              joinErrorEl.classList.remove('show')
+            }
+          } else {
+            document.getElementById('passwordLabel').textContent = 'Password (Create Account)'
+            joinErrorEl.classList.remove('show')
+          }
+        }
+      }, 300)
+    })
+
+    // Handle Enter key in join modal
+    joinUsernameEl.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        joinPasswordEl.focus()
+      }
+    })
+
+    joinPasswordEl.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        joinBtnEl.click()
+      }
+    })
+
+    loadRoom()
+
+    // --- Trash zone detection (bottom-right corner of fridge) ---
+    const TRASH_ZONE = 80
+
+    function isInTrashZone(sketchX, sketchY) {
+      // Check if sketch overlaps with trash zone (bottom-right corner)
+      const sketchRight = sketchX + SKETCH_SIZE
+      const sketchBottom = sketchY + SKETCH_SIZE
+      const trashLeft = CANVAS_W - TRASH_ZONE
+      const trashTop = CANVAS_H - TRASH_ZONE
+
+      return sketchRight > trashLeft && sketchBottom > trashTop
+    }
+    
+    // --- WebSocket ---
+    function connectWebSocket(username, password, isNewUser) {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const params = new URLSearchParams({
+        room: roomId,
+        username: username,
+        password: password || '',
+        isNewUser: isNewUser.toString()
+      })
+
+      ws = new WebSocket(`${protocol}//${location.host}?${params}`)
+
+      ws.onopen = () => {
+        console.log('Connected to room:', roomId)
+      }
+
+      ws.onclose = () => {
+        console.log('Disconnected from room')
+      }
+
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data)
+
+        if (msg.type === 'error') {
+          joinErrorEl.textContent = msg.error
+          joinErrorEl.classList.add('show')
+          joinBtnEl.disabled = false
+          joinBtnEl.textContent = 'Join'
+          return
+        }
+
+        if (msg.type === 'init') {
+          sketches = msg.sketches
+          userCountEl.textContent = `${msg.userCount}/${msg.maxUsers} online`
+          joinModal.classList.add('hidden')
+          render()
+        }
+
+        if (msg.type === 'userCount') {
+          userCountEl.textContent = `${msg.count}/${msg.maxUsers} online`
+        }
+
+        if (msg.type === 'command') {
+          applyCommand(msg.command)
+          render()
+        }
+      }
+    }
+
+    function applyCommand(cmd) {
+      if (cmd.op === 'create') {
+        sketches.push(cmd.sketch)
+      }
+      if (cmd.op === 'move') {
+        const s = sketches.find(s => s.id === cmd.id)
+        if (s) s.position = cmd.position
+      }
+      if (cmd.op === 'delete') {
+        sketches = sketches.filter(s => s.id !== cmd.id)
+      }
+    }
+
+    function send(command) {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify(command))
+      }
+    }
+    
+    // --- Rendering ---
+    const imageCache = new Map()
+    
+    function render() {
+      gardenCtx.clearRect(0, 0, CANVAS_W, CANVAS_H)
+      
+      for (const sketch of sketches) {
+        let img = imageCache.get(sketch.id)
+        if (!img) {
+          img = new Image()
+          img.src = sketch.imageData
+          imageCache.set(sketch.id, img)
+          img.onload = () => render()
+        }
+        if (img.complete) {
+          gardenCtx.drawImage(img, sketch.position.x, sketch.position.y)
+        }
+      }
+    }
+    
+    // --- Garden interactions ---
+    function getSketchAt(x, y) {
+      for (let i = sketches.length - 1; i >= 0; i--) {
+        const s = sketches[i]
+        if (x >= s.position.x && x < s.position.x + SKETCH_SIZE &&
+            y >= s.position.y && y < s.position.y + SKETCH_SIZE) {
+          return s
+        }
+      }
+      return null
+    }
+    
+    // Mouse events
+    garden.addEventListener('mousedown', (e) => {
+      const rect = garden.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+      
+      const sketch = getSketchAt(x, y)
+      if (sketch) {
+        dragging = sketch
+        dragOffset.x = x - sketch.position.x
+        dragOffset.y = y - sketch.position.y
+      }
+    })
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return
+      
+      const rect = garden.getBoundingClientRect()
+      const x = e.clientX - rect.left - dragOffset.x
+      const y = e.clientY - rect.top - dragOffset.y
+      
+      dragging.position = {
+        x: Math.max(0, Math.min(CANVAS_W - SKETCH_SIZE, x)),
+        y: Math.max(0, Math.min(CANVAS_H - SKETCH_SIZE, y))
+      }
+      
+      // Highlight trash if sketch is in zone
+      if (isInTrashZone(dragging.position.x, dragging.position.y)) {
+        trashEl.classList.add('active')
+      } else {
+        trashEl.classList.remove('active')
+      }
+      
+      render()
+    })
+    
+    document.addEventListener('mouseup', (e) => {
+      if (dragging) {
+        if (isInTrashZone(dragging.position.x, dragging.position.y)) {
+          send({ op: 'delete', id: dragging.id })
+          sketches = sketches.filter(s => s.id !== dragging.id)
+          imageCache.delete(dragging.id)
+        } else {
+          send({ op: 'move', id: dragging.id, position: dragging.position })
+        }
+        dragging = null
+        trashEl.classList.remove('active')
+        render()
+      }
+    })
+
+    // Touch events for garden
+    let touchDragging = null
+    
+    garden.addEventListener('touchstart', (e) => {
+      e.preventDefault()
+      const touch = e.touches[0]
+      const rect = garden.getBoundingClientRect()
+      const x = touch.clientX - rect.left
+      const y = touch.clientY - rect.top
+      
+      const sketch = getSketchAt(x, y)
+      if (sketch) {
+        touchDragging = sketch
+        dragOffset.x = x - sketch.position.x
+        dragOffset.y = y - sketch.position.y
+      }
+    })
+    
+    garden.addEventListener('touchmove', (e) => {
+      if (!touchDragging) return
+      e.preventDefault()
+      const touch = e.touches[0]
+      
+      const rect = garden.getBoundingClientRect()
+      const x = touch.clientX - rect.left - dragOffset.x
+      const y = touch.clientY - rect.top - dragOffset.y
+      
+      touchDragging.position = {
+        x: Math.max(0, Math.min(CANVAS_W - SKETCH_SIZE, x)),
+        y: Math.max(0, Math.min(CANVAS_H - SKETCH_SIZE, y))
+      }
+      
+      // Highlight trash if sketch is in zone
+      if (isInTrashZone(touchDragging.position.x, touchDragging.position.y)) {
+        trashEl.classList.add('active')
+      } else {
+        trashEl.classList.remove('active')
+      }
+      
+      render()
+    })
+    
+    garden.addEventListener('touchend', (e) => {
+      if (touchDragging) {
+        if (isInTrashZone(touchDragging.position.x, touchDragging.position.y)) {
+          send({ op: 'delete', id: touchDragging.id })
+          sketches = sketches.filter(s => s.id !== touchDragging.id)
+          imageCache.delete(touchDragging.id)
+        } else {
+          send({ op: 'move', id: touchDragging.id, position: touchDragging.position })
+        }
+        touchDragging = null
+        trashEl.classList.remove('active')
+        render()
+      }
+    })
+    
+    // --- Sketchboard ---
+    let drawing = false
+    
+    function updateBrushPreview() {
+      brushDotEl.style.width = currentBrushSize + 'px'
+      brushDotEl.style.height = currentBrushSize + 'px'
+    }
+    
+    brushSizeEl.addEventListener('input', (e) => {
+      currentBrushSize = parseInt(e.target.value)
+      updateBrushPreview()
+    })
+    
+    document.querySelectorAll('.color-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'))
+        btn.classList.add('active')
+        currentColor = btn.dataset.color
+      })
+    })
+    
+    document.getElementById('addBtn').addEventListener('click', () => {
+      modal.classList.add('open')
+      sketchCtx.clearRect(0, 0, SKETCH_SIZE, SKETCH_SIZE)
+      updateBrushPreview()
+    })
+    
+    document.getElementById('cancelSketch').addEventListener('click', () => {
+      modal.classList.remove('open')
+    })
+    
+    document.getElementById('clearSketch').addEventListener('click', () => {
+      sketchCtx.clearRect(0, 0, SKETCH_SIZE, SKETCH_SIZE)
+    })
+    
+    document.getElementById('submitSketch').addEventListener('click', () => {
+      const imageData = sketchboard.toDataURL('image/png')
+      const sketch = {
+        id: crypto.randomUUID(),
+        imageData,
+        position: { 
+          x: Math.random() * (CANVAS_W - SKETCH_SIZE),
+          y: Math.random() * (CANVAS_H - SKETCH_SIZE)
+        },
+        createdAt: Date.now()
+      }
+      send({ op: 'create', sketch })
+      sketches.push(sketch)
+      render()
+      modal.classList.remove('open')
+    })
+    
+    // Sketchboard drawing - mouse
+    sketchboard.addEventListener('mousedown', (e) => {
+      drawing = true
+      const rect = sketchboard.getBoundingClientRect()
+      sketchCtx.beginPath()
+      sketchCtx.moveTo(e.clientX - rect.left, e.clientY - rect.top)
+      sketchCtx.strokeStyle = currentColor
+      sketchCtx.lineWidth = currentBrushSize
+      sketchCtx.lineCap = 'round'
+      sketchCtx.lineJoin = 'round'
+    })
+    
+    sketchboard.addEventListener('mousemove', (e) => {
+      if (!drawing) return
+      const rect = sketchboard.getBoundingClientRect()
+      sketchCtx.lineTo(e.clientX - rect.left, e.clientY - rect.top)
+      sketchCtx.stroke()
+    })
+    
+    sketchboard.addEventListener('mouseup', () => drawing = false)
+    sketchboard.addEventListener('mouseleave', () => drawing = false)
+    
+    // Sketchboard drawing - touch
+    sketchboard.addEventListener('touchstart', (e) => {
+      e.preventDefault()
+      drawing = true
+      const rect = sketchboard.getBoundingClientRect()
+      const touch = e.touches[0]
+      sketchCtx.beginPath()
+      sketchCtx.moveTo(touch.clientX - rect.left, touch.clientY - rect.top)
+      sketchCtx.strokeStyle = currentColor
+      sketchCtx.lineWidth = currentBrushSize
+      sketchCtx.lineCap = 'round'
+      sketchCtx.lineJoin = 'round'
+    })
+    
+    sketchboard.addEventListener('touchmove', (e) => {
+      if (!drawing) return
+      e.preventDefault()
+      const rect = sketchboard.getBoundingClientRect()
+      const touch = e.touches[0]
+      sketchCtx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top)
+      sketchCtx.stroke()
+    })
+    
+    sketchboard.addEventListener('touchend', () => drawing = false)
+    
+    // Initial render
+    updateBrushPreview()
+  </script>
+</body>
+</html>

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fridge Magnets - Create a Room</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #fff;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 500px;
+      width: 100%;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 48px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      font-size: 18px;
+      color: rgba(255,255,255,0.6);
+      margin-bottom: 48px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.05);
+      backdrop-filter: blur(20px);
+      border-radius: 24px;
+      padding: 40px;
+      margin-bottom: 24px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+      text-align: left;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: rgba(255,255,255,0.8);
+    }
+
+    input {
+      width: 100%;
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 12px;
+      color: #fff;
+      font-size: 16px;
+      transition: all 0.2s;
+    }
+
+    input:focus {
+      outline: none;
+      background: rgba(255,255,255,0.12);
+      border-color: rgba(255,255,255,0.3);
+    }
+
+    input::placeholder {
+      color: rgba(255,255,255,0.4);
+    }
+
+    .hint {
+      font-size: 12px;
+      color: rgba(255,255,255,0.5);
+      margin-top: 6px;
+    }
+
+    button {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 30px rgba(102, 126, 234, 0.5);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      margin: 32px 0;
+      color: rgba(255,255,255,0.4);
+      font-size: 14px;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(255,255,255,0.1);
+    }
+
+    .divider span {
+      padding: 0 16px;
+    }
+
+    .join-section {
+      display: flex;
+      gap: 12px;
+    }
+
+    .join-section input {
+      flex: 1;
+    }
+
+    .join-section button {
+      width: auto;
+      padding: 14px 32px;
+    }
+
+    #result {
+      margin-top: 24px;
+      padding: 16px;
+      background: rgba(52, 199, 89, 0.1);
+      border: 1px solid rgba(52, 199, 89, 0.3);
+      border-radius: 12px;
+      display: none;
+    }
+
+    #result.show {
+      display: block;
+    }
+
+    .room-url {
+      font-size: 14px;
+      color: rgba(255,255,255,0.7);
+      margin-top: 8px;
+      word-break: break-all;
+    }
+
+    .room-url a {
+      color: #667eea;
+      text-decoration: none;
+    }
+
+    .copy-btn {
+      margin-top: 12px;
+      background: rgba(255,255,255,0.1);
+      box-shadow: none;
+    }
+
+    .copy-btn:hover {
+      background: rgba(255,255,255,0.15);
+      transform: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧲 Fridge Magnets</h1>
+    <p class="subtitle">Create a collaborative drawing board</p>
+
+    <div class="card">
+      <div class="form-group">
+        <label>Room Name (optional)</label>
+        <input type="text" id="roomName" placeholder="Birthday Party Fridge">
+        <div class="hint">Leave blank for a random name</div>
+      </div>
+
+      <button onclick="createRoom()">Create Fridge</button>
+
+      <div id="result">
+        <div style="font-weight: 600; margin-bottom: 8px;">Room created! 🎉</div>
+        <div class="room-url">
+          <a id="roomLink" href="" target="_blank"></a>
+        </div>
+        <button class="copy-btn" onclick="copyLink()">Copy Link</button>
+      </div>
+    </div>
+
+    <div class="divider"><span>OR</span></div>
+
+    <div class="card">
+      <div class="form-group">
+        <label>Join Existing Room</label>
+        <div class="join-section">
+          <input type="text" id="roomCode" placeholder="Enter room code">
+          <button onclick="joinRoom()">Join</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function createRoom() {
+      const roomName = document.getElementById('roomName').value.trim() || undefined
+
+      const response = await fetch('/api/rooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: roomName })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        const fullUrl = window.location.origin + data.url
+        const roomLink = document.getElementById('roomLink')
+        roomLink.href = fullUrl
+        roomLink.textContent = fullUrl
+        document.getElementById('result').classList.add('show')
+      }
+    }
+
+    function joinRoom() {
+      const roomCode = document.getElementById('roomCode').value.trim()
+      if (roomCode) {
+        window.location.href = `/r/${roomCode}`
+      }
+    }
+
+    function copyLink() {
+      const link = document.getElementById('roomLink').textContent
+      navigator.clipboard.writeText(link)
+      const btn = event.target
+      const originalText = btn.textContent
+      btn.textContent = 'Copied!'
+      setTimeout(() => {
+        btn.textContent = originalText
+      }, 2000)
+    }
+  </script>
+</body>
+</html>

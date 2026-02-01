@@ -1,0 +1,17 @@
+{
+  "name": "garden",
+  "version": "1.0.0",
+  "description": "Collaborative fridge magnet drawing board",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ws": "^8.19.0",
+    "pg": "^8.13.1"
+  }
+}
