@@ -2,24 +2,26 @@
 
 -- Rooms table
 CREATE TABLE IF NOT EXISTS rooms (
-    id VARCHAR(8) PRIMARY KEY,
+    id VARCHAR(16) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     created_at BIGINT NOT NULL,
-    last_activity_at BIGINT NOT NULL
+    last_activity_at BIGINT NOT NULL,
+    date_start BIGINT,
+    date_end BIGINT
 );
 
 -- Room users (registered usernames and passwords)
 CREATE TABLE IF NOT EXISTS room_users (
-    room_id VARCHAR(8) NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+    room_id VARCHAR(16) NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
     username VARCHAR(255) NOT NULL,
-    password_hash VARCHAR(64) NOT NULL,
+    password_hash VARCHAR(64),
     PRIMARY KEY (room_id, username)
 );
 
--- Sketches (fridge magnets)
+-- Sketches (drawings)
 CREATE TABLE IF NOT EXISTS sketches (
     id VARCHAR(36) PRIMARY KEY,
-    room_id VARCHAR(8) NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+    room_id VARCHAR(16) NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
     type VARCHAR(50) NOT NULL,
     svg_path TEXT NOT NULL,
     position_x FLOAT NOT NULL,

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Fridge</title>
+  <title>HomeWreck</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     
@@ -381,6 +381,85 @@
     #joinError.show {
       display: block;
     }
+
+    /* Date Bounds UI */
+    #dateBounds {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(10px);
+      padding: 12px 16px;
+      border-radius: 12px;
+      z-index: 100;
+      max-width: 200px;
+    }
+
+    #dateBounds .date-header {
+      color: rgba(255,255,255,0.6);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    #dateBounds .date-display {
+      color: rgba(255,255,255,0.9);
+      font-size: 12px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    #dateBounds .date-inputs {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #dateBounds input[type="date"] {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      padding: 6px 8px;
+      color: #fff;
+      font-size: 11px;
+      width: 100%;
+    }
+
+    #dateBounds input[type="date"]:focus {
+      outline: none;
+      background: rgba(255,255,255,0.15);
+      border-color: rgba(255,255,255,0.4);
+    }
+
+    #dateBounds button {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      border-radius: 6px;
+      padding: 6px 12px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+
+    #dateBounds button:hover {
+      background: rgba(255,255,255,0.25);
+    }
+
+    #dateBounds .edit-mode {
+      display: none;
+    }
+
+    #dateBounds.editing .view-mode {
+      display: none;
+    }
+
+    #dateBounds.editing .edit-mode {
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -390,6 +469,21 @@
     <div class="shelf"></div>
     <canvas id="garden" width="340" height="680"></canvas>
     <span id="userCount">0 online</span>
+    <div id="dateBounds">
+      <div class="date-header">Event Dates</div>
+      <div class="view-mode">
+        <div class="date-display" id="dateDisplay">Not set</div>
+        <button onclick="editDates()">Edit Dates</button>
+      </div>
+      <div class="edit-mode">
+        <div class="date-inputs">
+          <input type="date" id="dateStartInput" placeholder="Start">
+          <input type="date" id="dateEndInput" placeholder="End">
+        </div>
+        <button onclick="saveDates()">Save</button>
+        <button onclick="cancelEditDates()">Cancel</button>
+      </div>
+    </div>
     <div id="ui">
       <button id="addBtn">+</button>
     </div>
@@ -403,15 +497,15 @@
 
   <div id="joinModal">
     <div class="join-card">
-      <h2>Join Fridge</h2>
+      <h2>Join HomeWreck</h2>
       <div class="room-name" id="joinRoomName">Loading...</div>
       <div class="join-form-group">
         <label>Username</label>
         <input type="text" id="joinUsername" placeholder="Enter your name" maxlength="20">
       </div>
       <div class="join-form-group" id="passwordGroup">
-        <label id="passwordLabel">Password</label>
-        <input type="password" id="joinPassword" placeholder="Enter password">
+        <label id="passwordLabel">Password (optional)</label>
+        <input type="password" id="joinPassword" placeholder="Leave blank for no password">
       </div>
       <button id="joinBtn">Continue</button>
       <div id="joinError"></div>
@@ -526,12 +620,6 @@
         return
       }
 
-      if (!password) {
-        joinErrorEl.textContent = 'Please enter a password'
-        joinErrorEl.classList.add('show')
-        return
-      }
-
       joinErrorEl.classList.remove('show')
       joinBtnEl.disabled = true
       joinBtnEl.textContent = 'Joining...'
@@ -551,7 +639,7 @@
       clearTimeout(checkTimeout)
 
       if (!username) {
-        document.getElementById('passwordLabel').textContent = 'Password'
+        document.getElementById('passwordLabel').textContent = 'Password (optional)'
         return
       }
 
@@ -559,7 +647,7 @@
         const userCheck = await checkUsername(username)
         if (userCheck) {
           if (userCheck.exists) {
-            document.getElementById('passwordLabel').textContent = 'Password (Login)'
+            document.getElementById('passwordLabel').textContent = 'Password - Login (optional if not set)'
             if (userCheck.isOnline) {
               joinErrorEl.textContent = 'This user is currently online'
               joinErrorEl.classList.add('show')
@@ -567,7 +655,7 @@
               joinErrorEl.classList.remove('show')
             }
           } else {
-            document.getElementById('passwordLabel').textContent = 'Password (Create Account)'
+            document.getElementById('passwordLabel').textContent = 'Password - New Account (optional)'
             joinErrorEl.classList.remove('show')
           }
         }
@@ -636,7 +724,9 @@
         if (msg.type === 'init') {
           sketches = msg.sketches
           userCountEl.textContent = `${msg.userCount}/${msg.maxUsers} online`
+          username = msg.username
           joinModal.classList.add('hidden')
+          loadDates()
           render()
         }
 
@@ -647,6 +737,10 @@
         if (msg.type === 'command') {
           applyCommand(msg.command)
           render()
+        }
+
+        if (msg.type === 'dateUpdate') {
+          updateDateDisplay(msg.dateStart, msg.dateEnd)
         }
       }
     }
@@ -911,6 +1005,75 @@
     
     // Initial render
     updateBrushPreview()
+
+    // --- Date Bounds Management ---
+    async function loadDates() {
+      try {
+        const response = await fetch(`/api/rooms/${roomId}/dates`)
+        if (response.ok) {
+          const data = await response.json()
+          updateDateDisplay(data.dateStart, data.dateEnd)
+        }
+      } catch (err) {
+        console.error('Error loading dates:', err)
+      }
+    }
+
+    function updateDateDisplay(dateStart, dateEnd) {
+      const displayEl = document.getElementById('dateDisplay')
+      if (dateStart && dateEnd) {
+        const start = new Date(dateStart).toLocaleDateString()
+        const end = new Date(dateEnd).toLocaleDateString()
+        displayEl.textContent = `${start} - ${end}`
+      } else {
+        displayEl.textContent = 'Not set'
+      }
+    }
+
+    function editDates() {
+      const dateBoundsEl = document.getElementById('dateBounds')
+      dateBoundsEl.classList.add('editing')
+
+      // Load current dates into inputs
+      fetch(`/api/rooms/${roomId}/dates`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.dateStart) {
+            document.getElementById('dateStartInput').value = new Date(data.dateStart).toISOString().split('T')[0]
+          }
+          if (data.dateEnd) {
+            document.getElementById('dateEndInput').value = new Date(data.dateEnd).toISOString().split('T')[0]
+          }
+        })
+    }
+
+    async function saveDates() {
+      const dateStartInput = document.getElementById('dateStartInput').value
+      const dateEndInput = document.getElementById('dateEndInput').value
+
+      const dateStart = dateStartInput ? new Date(dateStartInput).getTime() : null
+      const dateEnd = dateEndInput ? new Date(dateEndInput).getTime() : null
+
+      try {
+        const response = await fetch(`/api/rooms/${roomId}/dates`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dateStart, dateEnd })
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          updateDateDisplay(data.dateStart, data.dateEnd)
+          document.getElementById('dateBounds').classList.remove('editing')
+        }
+      } catch (err) {
+        console.error('Error saving dates:', err)
+      }
+    }
+
+    function cancelEditDates() {
+      document.getElementById('dateBounds').classList.remove('editing')
+    }
   </script>
 </body>
 </html>

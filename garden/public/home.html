@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fridge Magnets - Create a Room</title>
+  <title>HomeWreck - Create a Room</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -112,110 +112,21 @@
       transform: translateY(0);
     }
 
-    .divider {
-      display: flex;
-      align-items: center;
-      margin: 32px 0;
-      color: rgba(255,255,255,0.4);
-      font-size: 14px;
-    }
-
-    .divider::before,
-    .divider::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: rgba(255,255,255,0.1);
-    }
-
-    .divider span {
-      padding: 0 16px;
-    }
-
-    .join-section {
-      display: flex;
-      gap: 12px;
-    }
-
-    .join-section input {
-      flex: 1;
-    }
-
-    .join-section button {
-      width: auto;
-      padding: 14px 32px;
-    }
-
-    #result {
-      margin-top: 24px;
-      padding: 16px;
-      background: rgba(52, 199, 89, 0.1);
-      border: 1px solid rgba(52, 199, 89, 0.3);
-      border-radius: 12px;
-      display: none;
-    }
-
-    #result.show {
-      display: block;
-    }
-
-    .room-url {
-      font-size: 14px;
-      color: rgba(255,255,255,0.7);
-      margin-top: 8px;
-      word-break: break-all;
-    }
-
-    .room-url a {
-      color: #667eea;
-      text-decoration: none;
-    }
-
-    .copy-btn {
-      margin-top: 12px;
-      background: rgba(255,255,255,0.1);
-      box-shadow: none;
-    }
-
-    .copy-btn:hover {
-      background: rgba(255,255,255,0.15);
-      transform: none;
-    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🧲 Fridge Magnets</h1>
+    <h1>🏠 HomeWreck</h1>
     <p class="subtitle">Create a collaborative drawing board</p>
 
     <div class="card">
       <div class="form-group">
         <label>Room Name (optional)</label>
-        <input type="text" id="roomName" placeholder="Birthday Party Fridge">
+        <input type="text" id="roomName" placeholder="Birthday Party">
         <div class="hint">Leave blank for a random name</div>
       </div>
 
-      <button onclick="createRoom()">Create Fridge</button>
-
-      <div id="result">
-        <div style="font-weight: 600; margin-bottom: 8px;">Room created! 🎉</div>
-        <div class="room-url">
-          <a id="roomLink" href="" target="_blank"></a>
-        </div>
-        <button class="copy-btn" onclick="copyLink()">Copy Link</button>
-      </div>
-    </div>
-
-    <div class="divider"><span>OR</span></div>
-
-    <div class="card">
-      <div class="form-group">
-        <label>Join Existing Room</label>
-        <div class="join-section">
-          <input type="text" id="roomCode" placeholder="Enter room code">
-          <button onclick="joinRoom()">Join</button>
-        </div>
-      </div>
+      <button onclick="createRoom()">Create Room</button>
     </div>
   </div>
 
@@ -232,30 +143,8 @@
       const data = await response.json()
 
       if (data.success) {
-        const fullUrl = window.location.origin + data.url
-        const roomLink = document.getElementById('roomLink')
-        roomLink.href = fullUrl
-        roomLink.textContent = fullUrl
-        document.getElementById('result').classList.add('show')
+        window.location.href = data.url
       }
-    }
-
-    function joinRoom() {
-      const roomCode = document.getElementById('roomCode').value.trim()
-      if (roomCode) {
-        window.location.href = `/r/${roomCode}`
-      }
-    }
-
-    function copyLink() {
-      const link = document.getElementById('roomLink').textContent
-      navigator.clipboard.writeText(link)
-      const btn = event.target
-      const originalText = btn.textContent
-      btn.textContent = 'Copied!'
-      setTimeout(() => {
-        btn.textContent = originalText
-      }, 2000)
     }
   </script>
 </body>

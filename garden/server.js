@@ -21,9 +21,11 @@ class Room {
     this.name = name || this.generateRoomName()
     this.sketches = new Map()
     this.users = new Map() // username -> { username, ws, color, joinedAt }
-    this.userPasswords = new Map() // username -> hashed password
+    this.userPasswords = new Map() // username -> hashed password (or null for no password)
     this.createdAt = Date.now()
     this.lastActivityAt = Date.now()
+    this.dateStart = null
+    this.dateEnd = null
     this.maxUsers = 8
     this.colors = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#5856d6', '#af52de', '#ff2d55']
     this.usedColors = new Set()
@@ -38,6 +40,7 @@ class Room {
   }
 
   hashPassword(password) {
+    if (!password) return null
     return crypto.createHash('sha256').update(password).digest('hex')
   }
 
@@ -49,7 +52,28 @@ class Room {
     if (!this.userPasswords.has(username)) {
       return false
     }
-    return this.hashPassword(password) === this.userPasswords.get(username)
+    const storedHash = this.userPasswords.get(username)
+    // If no password was set (null), allow login without password
+    if (storedHash === null) {
+      return !password || password === ''
+    }
+    // If password was set, verify it matches
+    return password && this.hashPassword(password) === storedHash
+  }
+
+  getAvailableUsername(baseUsername) {
+    if (!this.hasUser(baseUsername)) {
+      return baseUsername
+    }
+
+    // Find next available numbered username
+    let counter = 1
+    let newUsername = `${baseUsername} (${counter})`
+    while (this.hasUser(newUsername)) {
+      counter++
+      newUsername = `${baseUsername} (${counter})`
+    }
+    return newUsername
   }
 
   registerUser(username, password) {
@@ -128,7 +152,9 @@ class Room {
       name: this.name,
       userCount: this.users.size,
       maxUsers: this.maxUsers,
-      createdAt: this.createdAt
+      createdAt: this.createdAt,
+      dateStart: this.dateStart,
+      dateEnd: this.dateEnd
     }
   }
 }
@@ -146,11 +172,11 @@ async function initializeDatabase() {
 // --- Persistence ---
 async function saveRoom(room) {
   await pool.query(
-    `INSERT INTO rooms (id, name, created_at, last_activity_at)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO rooms (id, name, created_at, last_activity_at, date_start, date_end)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (id) DO UPDATE
-     SET last_activity_at = $4`,
-    [room.id, room.name, room.createdAt, room.lastActivityAt]
+     SET last_activity_at = $4, date_start = $5, date_end = $6`,
+    [room.id, room.name, room.createdAt, room.lastActivityAt, room.dateStart, room.dateEnd]
   )
 }
 
@@ -171,6 +197,8 @@ async function restoreRooms() {
       const room = new Room(roomData.id, roomData.name)
       room.createdAt = parseInt(roomData.created_at)
       room.lastActivityAt = parseInt(roomData.last_activity_at)
+      room.dateStart = roomData.date_start ? parseInt(roomData.date_start) : null
+      room.dateEnd = roomData.date_end ? parseInt(roomData.date_end) : null
 
       // Restore user passwords
       const usersResult = await pool.query(
@@ -253,7 +281,7 @@ async function applyCommandToRoom(room, command, shouldPersist = true) {
 }
 
 function generateRoomId() {
-  return crypto.randomBytes(4).toString('hex')
+  return crypto.randomBytes(8).toString('hex')
 }
 
 // --- Idle Cleanup ---
@@ -337,6 +365,59 @@ const server = http.createServer((req, res) => {
     return
   }
 
+  // API: Get/Update room date bounds
+  if (pathname.startsWith('/api/rooms/') && pathname.endsWith('/dates')) {
+    const roomId = pathname.split('/')[3]
+    const room = rooms.get(roomId)
+
+    if (!room) {
+      res.writeHead(404, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'Room not found' }))
+      return
+    }
+
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({
+        dateStart: room.dateStart,
+        dateEnd: room.dateEnd
+      }))
+      return
+    }
+
+    if (req.method === 'POST') {
+      let body = ''
+      req.on('data', chunk => { body += chunk })
+      req.on('end', async () => {
+        try {
+          const { dateStart, dateEnd } = JSON.parse(body)
+          room.dateStart = dateStart || null
+          room.dateEnd = dateEnd || null
+          await saveRoom(room)
+
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({
+            success: true,
+            dateStart: room.dateStart,
+            dateEnd: room.dateEnd
+          }))
+
+          // Broadcast date change to all users in room
+          room.broadcast({
+            type: 'dateUpdate',
+            dateStart: room.dateStart,
+            dateEnd: room.dateEnd
+          })
+        } catch (error) {
+          console.error('Error updating dates:', error)
+          res.writeHead(500, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Failed to update dates' }))
+        }
+      })
+      return
+    }
+  }
+
   if (pathname.startsWith('/api/rooms/') && req.method === 'GET') {
     const roomId = pathname.split('/')[3]
     const room = rooms.get(roomId)
@@ -394,18 +475,12 @@ const wss = new WebSocketServer({ server })
 wss.on('connection', async (ws, req) => {
   const params = new URLSearchParams(url.parse(req.url).query)
   const roomId = params.get('room')
-  const username = params.get('username')
-  const password = params.get('password')
+  let username = params.get('username')
+  const password = params.get('password') || ''
   const isNewUser = params.get('isNewUser') === 'true'
 
   if (!roomId || !username) {
     ws.send(JSON.stringify({ type: 'error', error: 'Missing room or username' }))
-    ws.close()
-    return
-  }
-
-  if (!password) {
-    ws.send(JSON.stringify({ type: 'error', error: 'Password is required' }))
     ws.close()
     return
   }
@@ -423,9 +498,10 @@ wss.on('connection', async (ws, req) => {
   if (isNewUser) {
     // User is trying to register a new username
     if (userExists) {
-      ws.send(JSON.stringify({ type: 'error', error: 'Username already taken. Please login instead.' }))
-      ws.close()
-      return
+      // Username taken - auto-generate a new one (Alice -> Alice (1))
+      const originalUsername = username
+      username = room.getAvailableUsername(username)
+      console.log(`Username "${originalUsername}" taken, assigned "${username}"`)
     }
 
     // Register the new user
