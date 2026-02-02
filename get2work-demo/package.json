@@ -1,0 +1,17 @@
+{
+  "name": "get2work-demo",
+  "version": "1.0.0",
+  "description": "Collaborative TODO checklist with real-time updates",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["todo", "checklist", "collaborative", "websocket"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "pg": "^8.11.3",
+    "ws": "^8.16.0"
+  }
+}

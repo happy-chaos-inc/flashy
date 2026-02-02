@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Get2Work</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="container">
+    <aside class="sidebar" id="sidebar">
+      <div class="signin-card">
+        <div class="signin-form">
+          <h2>Sign In</h2>
+          <div class="subtitle">Sign in to check items and edit</div>
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="joinUsername" placeholder="Enter your name" maxlength="20">
+          </div>
+          <div class="form-group">
+            <label id="passwordLabel">Password (optional)</label>
+            <input type="password" id="joinPassword" placeholder="Leave blank for no password">
+          </div>
+          <button class="signin-btn" id="joinBtn">Sign In</button>
+          <div class="error-message" id="joinError"></div>
+        </div>
+        <div class="user-info">
+          <div class="user-avatar" id="userDot"></div>
+          <div class="user-name" id="username"></div>
+          <div class="user-status">Signed in</div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header>
+        <h1 id="roomName">Loading...</h1>
+      </header>
+
+      <div class="todos-list">
+        <div id="todosList"></div>
+        <div class="add-todo-section">
+          <input
+            type="text"
+            class="add-todo-input disabled"
+            id="addTodoInput"
+            placeholder="Sign in to add items..."
+            disabled
+          >
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // --- State ---
+    let todos = []
+    let roomId = null
+    let username = null
+    let userColor = null
+    let userColors = {}
+    let ws = null
+    let isAuthenticated = false
+
+    // Extract room ID from URL
+    const pathParts = window.location.pathname.split('/')
+    if (pathParts[1] === 'r' && pathParts[2]) {
+      roomId = pathParts[2]
+    } else {
+      window.location.href = '/'
+    }
+
+    // --- Elements ---
+    const sidebarEl = document.getElementById('sidebar')
+    const joinUsernameEl = document.getElementById('joinUsername')
+    const joinPasswordEl = document.getElementById('joinPassword')
+    const joinBtnEl = document.getElementById('joinBtn')
+    const joinErrorEl = document.getElementById('joinError')
+    const roomNameEl = document.getElementById('roomName')
+    const userDotEl = document.getElementById('userDot')
+    const usernameEl = document.getElementById('username')
+    const todosListEl = document.getElementById('todosList')
+    const addTodoInputEl = document.getElementById('addTodoInput')
+
+    // --- Load room info ---
+    async function loadRoom() {
+      try {
+        const response = await fetch(`/api/rooms/${roomId}`)
+        if (!response.ok) {
+          joinErrorEl.textContent = 'Room not found'
+          joinErrorEl.classList.add('show')
+          return
+        }
+        const roomInfo = await response.json()
+        roomNameEl.textContent = roomInfo.name
+      } catch (err) {
+        joinErrorEl.textContent = 'Error loading room'
+        joinErrorEl.classList.add('show')
+      }
+    }
+
+    // --- Check username ---
+    async function checkUsername(username) {
+      try {
+        const response = await fetch(`/api/rooms/${roomId}/check-user?username=${encodeURIComponent(username)}`)
+        if (!response.ok) return null
+        return await response.json()
+      } catch (err) {
+        return null
+      }
+    }
+
+    // --- WebSocket Connection ---
+    function connectWebSocket(usernameParam, password, isNewUser) {
+      console.log('connectWebSocket called with:', { usernameParam, password: password ? '***' : '', isNewUser })
+
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const params = new URLSearchParams({
+        room: roomId,
+        username: usernameParam || '',
+        password: password || '',
+        isNewUser: isNewUser.toString()
+      })
+
+      console.log('WebSocket URL params:', params.toString())
+
+      ws = new WebSocket(`${protocol}//${location.host}?${params}`)
+
+      ws.onopen = () => {
+        console.log('Connected to room:', roomId)
+      }
+
+      ws.onclose = () => {
+        console.log('Disconnected from room')
+      }
+
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data)
+
+        if (msg.type === 'error') {
+          joinErrorEl.textContent = msg.error
+          joinErrorEl.classList.add('show')
+          joinBtnEl.disabled = false
+          joinBtnEl.textContent = 'Sign In'
+          return
+        }
+
+        if (msg.type === 'init') {
+          console.log('Received init:', msg)
+          todos = msg.todos
+          username = msg.username
+          userColor = msg.color
+          userColors = msg.userColors
+          isAuthenticated = !!username
+
+          console.log('After init - username:', username, 'isAuthenticated:', isAuthenticated)
+
+          updateUI()
+          renderTodos()
+        }
+
+        if (msg.type === 'command') {
+          applyCommand(msg.command)
+          renderTodos()
+        }
+
+        if (msg.type === 'userJoined' || msg.type === 'userLeft') {
+          userColors = msg.userColors
+          renderTodos()
+        }
+      }
+    }
+
+    function applyCommand(cmd) {
+      if (cmd.op === 'createTodo') {
+        todos.push(cmd.todo)
+        todos.sort((a, b) => a.position - b.position)
+      }
+      if (cmd.op === 'updateTodo') {
+        const todo = todos.find(t => t.id === cmd.id)
+        if (todo) todo.text = cmd.text
+      }
+      if (cmd.op === 'deleteTodo') {
+        todos = todos.filter(t => t.id !== cmd.id)
+      }
+      if (cmd.op === 'checkTodo') {
+        const todo = todos.find(t => t.id === cmd.todoId)
+        if (todo) {
+          if (!todo.checks) todo.checks = []
+          if (!todo.checks.includes(cmd.username)) {
+            todo.checks.push(cmd.username)
+          }
+        }
+      }
+      if (cmd.op === 'uncheckTodo') {
+        const todo = todos.find(t => t.id === cmd.todoId)
+        if (todo) {
+          if (!todo.checks) todo.checks = []
+          todo.checks = todo.checks.filter(u => u !== cmd.username)
+        }
+      }
+    }
+
+    function send(command) {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify(command))
+      }
+    }
+
+    // --- UI Updates ---
+    function updateUI() {
+      if (isAuthenticated) {
+        sidebarEl.classList.add('authenticated')
+        usernameEl.textContent = username
+        userDotEl.style.background = userColor
+        addTodoInputEl.disabled = false
+        addTodoInputEl.classList.remove('disabled')
+        addTodoInputEl.placeholder = 'Add a new item...'
+      } else {
+        sidebarEl.classList.remove('authenticated')
+      }
+    }
+
+    function obscureText(text) {
+      // Replace each character with a block character, preserve spaces
+      return text.split('').map(char => char === ' ' ? ' ' : '█').join('')
+    }
+
+    function renderTodos() {
+      if (todos.length === 0) {
+        todosListEl.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📋</div>
+            <div>No items yet. ${isAuthenticated ? 'Add one below!' : 'Sign in to add items.'}</div>
+          </div>
+        `
+        return
+      }
+
+      todosListEl.innerHTML = todos.map(todo => {
+        const userChecked = todo.checks.includes(username)
+        const hasChecks = todo.checks.length > 0
+        const displayText = isAuthenticated ? todo.text : obscureText(todo.text)
+
+        return `
+          <div class="todo-item" data-id="${todo.id}">
+            <div class="checkbox-container">
+              <div class="checkbox ${!isAuthenticated ? 'disabled' : ''} ${userChecked ? 'checked' : ''}"
+                   onclick="${isAuthenticated ? `toggleCheck('${todo.id}')` : ''}">
+                <span class="checkmark" style="color: ${userChecked ? userColor : '#fff'}">✓</span>
+              </div>
+            </div>
+            <div class="todo-content">
+              <div class="todo-text ${!isAuthenticated ? 'obscured' : ''}" id="text-${todo.id}">
+                ${displayText}
+                ${hasChecks && isAuthenticated ? renderStrikethroughs(todo.checks) : ''}
+              </div>
+              <input
+                type="text"
+                class="todo-edit-input"
+                id="edit-${todo.id}"
+                value="${todo.text}"
+                onkeydown="handleEditKeydown(event, '${todo.id}')"
+                onblur="saveEdit('${todo.id}')"
+              >
+              ${hasChecks && isAuthenticated ? `
+                <div class="checks-display">
+                  ${todo.checks.map(u => `
+                    <div class="check-badge" style="background: ${userColors[u] || '#555'}20; color: ${userColors[u] || '#888'}">
+                      <div class="check-dot" style="background: ${userColors[u] || '#888'}"></div>
+                      ${u}
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
+            </div>
+            ${isAuthenticated ? `
+              <div class="todo-actions">
+                <button class="action-btn" onclick="editTodo('${todo.id}')" title="Edit">✎</button>
+                <button class="action-btn delete" onclick="deleteTodo('${todo.id}')" title="Delete">×</button>
+              </div>
+            ` : ''}
+          </div>
+        `
+      }).join('')
+    }
+
+    function renderStrikethroughs(checks) {
+      return checks.map(u => {
+        const color = userColors[u] || '#888'
+        return `<div class="strikethrough" style="background: ${color}"></div>`
+      }).join('')
+    }
+
+    function toggleCheck(todoId) {
+      if (!isAuthenticated) return
+
+      const todo = todos.find(t => t.id === todoId)
+      if (!todo) return
+
+      if (!todo.checks) todo.checks = []
+      const isChecked = todo.checks.includes(username)
+
+      console.log('toggleCheck:', { todoId, username, isChecked, checks: todo.checks })
+
+      if (isChecked) {
+        send({ op: 'uncheckTodo', todoId })
+      } else {
+        send({ op: 'checkTodo', todoId })
+      }
+      // Don't modify locally - wait for server broadcast to avoid duplicates
+    }
+
+    function editTodo(todoId) {
+      const textEl = document.getElementById(`text-${todoId}`)
+      const editEl = document.getElementById(`edit-${todoId}`)
+      textEl.classList.add('editing')
+      editEl.classList.add('active')
+      editEl.focus()
+      editEl.select()
+    }
+
+    function saveEdit(todoId) {
+      const textEl = document.getElementById(`text-${todoId}`)
+      const editEl = document.getElementById(`edit-${todoId}`)
+      const newText = editEl.value.trim()
+
+      if (newText && newText !== todos.find(t => t.id === todoId)?.text) {
+        send({ op: 'updateTodo', id: todoId, text: newText })
+        // Don't modify locally - wait for server broadcast
+      }
+
+      textEl.classList.remove('editing')
+      editEl.classList.remove('active')
+    }
+
+    function handleEditKeydown(event, todoId) {
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        saveEdit(todoId)
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        const textEl = document.getElementById(`text-${todoId}`)
+        const editEl = document.getElementById(`edit-${todoId}`)
+        textEl.classList.remove('editing')
+        editEl.classList.remove('active')
+      }
+    }
+
+    function deleteTodo(todoId) {
+      if (!confirm('Delete this item?')) return
+      send({ op: 'deleteTodo', id: todoId })
+      // Don't modify locally - wait for server broadcast to avoid duplicates
+    }
+
+    // --- Add TODO ---
+    addTodoInputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        const text = addTodoInputEl.value.trim()
+        if (!text) return
+
+        const newTodo = {
+          id: crypto.randomUUID(),
+          text: text,
+          position: todos.length,
+          checks: []
+        }
+
+        send({ op: 'createTodo', todo: newTodo })
+        addTodoInputEl.value = ''
+        // Don't add locally - wait for server broadcast to avoid duplicates
+      }
+    })
+
+    // --- Join handlers ---
+    joinBtnEl.addEventListener('click', async () => {
+      const user = joinUsernameEl.value.trim()
+      const password = joinPasswordEl.value.trim()
+
+      if (!user) {
+        joinErrorEl.textContent = 'Please enter a username'
+        joinErrorEl.classList.add('show')
+        return
+      }
+
+      joinErrorEl.classList.remove('show')
+      joinBtnEl.disabled = true
+      joinBtnEl.textContent = 'Joining...'
+
+      const userCheck = await checkUsername(user)
+      const isNewUser = userCheck ? !userCheck.exists : true
+
+      // Close existing guest connection before creating authenticated one
+      if (ws) {
+        ws.onmessage = null  // Disable message handler
+        ws.onclose = null     // Disable close handler
+        ws.onerror = null     // Disable error handler
+        ws.close()
+        ws = null
+      }
+
+      // Small delay to ensure old connection is fully closed
+      setTimeout(() => {
+        connectWebSocket(user, password, isNewUser)
+      }, 100)
+    })
+
+    // Update UI based on username availability
+    let checkTimeout = null
+    joinUsernameEl.addEventListener('input', async (e) => {
+      const user = e.target.value.trim()
+      clearTimeout(checkTimeout)
+
+      if (!user) {
+        document.getElementById('passwordLabel').textContent = 'Password (optional)'
+        return
+      }
+
+      checkTimeout = setTimeout(async () => {
+        const userCheck = await checkUsername(user)
+        if (userCheck) {
+          if (userCheck.exists) {
+            document.getElementById('passwordLabel').textContent = 'Password - Login (optional if not set)'
+            if (userCheck.isOnline) {
+              joinErrorEl.textContent = 'This user is currently online'
+              joinErrorEl.classList.add('show')
+            } else {
+              joinErrorEl.classList.remove('show')
+            }
+          } else {
+            document.getElementById('passwordLabel').textContent = 'Password - New Account (optional)'
+            joinErrorEl.classList.remove('show')
+          }
+        }
+      }, 300)
+    })
+
+    // Handle Enter key in join modal
+    joinUsernameEl.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        joinPasswordEl.focus()
+      }
+    })
+
+    joinPasswordEl.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        joinBtnEl.click()
+      }
+    })
+
+    // --- Start ---
+    async function init() {
+      await loadRoom()
+      // Connect as guest immediately to show obscured checklist
+      connectWebSocket(null, null, false)
+    }
+
+    init()
+  </script>
+</body>
+</html>

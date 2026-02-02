@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Get2Work - Create Checklist</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/home.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Get2Work</h1>
+    <div class="subtitle">Create a collaborative checklist</div>
+
+    <div class="error" id="error"></div>
+
+    <div class="input-group">
+      <label>Checklist Name (Optional)</label>
+      <input type="text" id="checklistName" placeholder="My Awesome Checklist" maxlength="100">
+    </div>
+
+    <div class="todos-section">
+      <label>TODO Items</label>
+      <div id="todosList"></div>
+      <button class="add-todo-btn" onclick="addTodo()">+ Add Item</button>
+    </div>
+
+    <button class="create-link-btn" id="createBtn" onclick="createRoom()" disabled>
+      Create Link
+    </button>
+    <div class="hint" id="hint">Add at least 1 TODO item to continue</div>
+  </div>
+
+  <script>
+    let todos = []
+
+    function addTodo(text = '') {
+      const id = crypto.randomUUID()
+      todos.push({ id, text })
+      renderTodos()
+      updateCreateButton()
+
+      // Focus the newly added input
+      setTimeout(() => {
+        const inputs = document.querySelectorAll('.todo-item input')
+        inputs[inputs.length - 1]?.focus()
+      }, 0)
+    }
+
+    function deleteTodo(id) {
+      todos = todos.filter(t => t.id !== id)
+      renderTodos()
+      updateCreateButton()
+    }
+
+    function updateTodo(id, text) {
+      const todo = todos.find(t => t.id === id)
+      if (todo) {
+        todo.text = text
+        updateCreateButton()
+      }
+    }
+
+    function renderTodos() {
+      const container = document.getElementById('todosList')
+      container.innerHTML = todos.map(todo => `
+        <div class="todo-item">
+          <input
+            type="text"
+            value="${todo.text}"
+            placeholder="Enter a task..."
+            oninput="updateTodo('${todo.id}', this.value)"
+          >
+          <button class="delete-btn" onclick="deleteTodo('${todo.id}')">×</button>
+        </div>
+      `).join('')
+    }
+
+    function updateCreateButton() {
+      const hasValidTodos = todos.filter(t => t.text.trim()).length > 0
+      const createBtn = document.getElementById('createBtn')
+      const hint = document.getElementById('hint')
+
+      createBtn.disabled = !hasValidTodos
+
+      if (hasValidTodos) {
+        hint.textContent = 'Ready to create your checklist'
+        hint.style.color = '#888'
+      } else {
+        hint.textContent = 'Add at least 1 TODO item to continue'
+        hint.style.color = '#555'
+      }
+    }
+
+    async function createRoom() {
+      const name = document.getElementById('checklistName').value.trim() || 'Untitled Checklist'
+      const validTodos = todos.filter(t => t.text.trim()).map(t => t.text.trim())
+
+      if (validTodos.length === 0) {
+        showError('Please add at least one TODO item')
+        return
+      }
+
+      const createBtn = document.getElementById('createBtn')
+      createBtn.disabled = true
+      createBtn.textContent = 'Creating...'
+
+      try {
+        const response = await fetch('/api/rooms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, todos: validTodos })
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to create room')
+        }
+
+        const data = await response.json()
+        window.location.href = data.url
+      } catch (error) {
+        console.error('Error creating room:', error)
+        showError('Failed to create checklist. Please try again.')
+        createBtn.disabled = false
+        createBtn.textContent = 'Create Link'
+      }
+    }
+
+    function showError(message) {
+      const errorEl = document.getElementById('error')
+      errorEl.textContent = message
+      errorEl.classList.add('show')
+      setTimeout(() => errorEl.classList.remove('show'), 5000)
+    }
+
+    // Start with one empty TODO
+    addTodo()
+
+    // Handle Enter key to add new TODO
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target !== document.getElementById('checklistName')) {
+        e.preventDefault()
+        addTodo()
+      }
+    })
+  </script>
+</body>
+</html>
