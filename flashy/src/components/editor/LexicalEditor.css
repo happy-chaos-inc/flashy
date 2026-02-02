@@ -1,0 +1,112 @@
+.editor-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.editor-inner {
+  flex: 1;
+  position: relative;
+  overflow-y: auto;
+}
+
+.editor-input {
+  padding: 24px 48px;
+  outline: none;
+  font-size: 16px;
+  line-height: 1.6;
+  min-height: 100%;
+}
+
+.editor-input:focus {
+  outline: none;
+}
+
+.editor-placeholder {
+  position: absolute;
+  top: 24px;
+  left: 48px;
+  color: #9ca3af;
+  pointer-events: none;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* Text formatting */
+.editor-text-bold {
+  font-weight: bold;
+}
+
+.editor-text-italic {
+  font-style: italic;
+}
+
+.editor-text-underline {
+  text-decoration: underline;
+}
+
+.editor-text-code {
+  background-color: #f3f4f6;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+/* Headings */
+.editor-heading-h1 {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 24px 0 16px 0;
+  color: #1a202c;
+  line-height: 1.3;
+}
+
+.editor-heading-h2 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 20px 0 12px 0;
+  color: #1a202c;
+  line-height: 1.3;
+}
+
+.editor-heading-h3 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 16px 0 8px 0;
+  color: #1a202c;
+  line-height: 1.3;
+}
+
+/* Paragraph */
+.editor-paragraph {
+  margin: 0 0 12px 0;
+  color: #374151;
+}
+
+/* Lists */
+.editor-list-ul,
+.editor-list-ol {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.editor-list-ul {
+  list-style-type: disc;
+}
+
+.editor-list-ol {
+  list-style-type: decimal;
+}
+
+.editor-listitem {
+  margin: 4px 0;
+  color: #374151;
+}
+
+.editor-nested-listitem {
+  list-style-type: circle;
+}

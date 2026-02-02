@@ -1,0 +1,110 @@
+.editor-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #f9fafb;
+}
+
+.editor-header {
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 16px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.editor-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lock-button {
+  padding: 8px 16px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.lock-button:hover {
+  background-color: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.editor-container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.editor-content {
+  flex: 1;
+  overflow: hidden;
+  margin: 24px 0 24px 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-placeholder {
+  color: #9ca3af;
+  text-align: center;
+  padding: 48px;
+  line-height: 1.6;
+}
+
+.flashcard-sidebar {
+  width: 320px;
+  background: white;
+  border-left: 1px solid #e5e7eb;
+  padding: 24px;
+  overflow-y: auto;
+  margin: 24px 24px 24px 0;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.flashcard-sidebar h3 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a202c;
+}
+
+.sidebar-placeholder {
+  color: #9ca3af;
+  font-size: 14px;
+  text-align: center;
+  padding: 24px 0;
+  line-height: 1.6;
+}
+
+@media (max-width: 768px) {
+  .editor-container {
+    flex-direction: column;
+  }
+
+  .flashcard-sidebar {
+    width: 100%;
+    margin: 0 24px 24px 24px;
+  }
+
+  .editor-content {
+    margin: 24px;
+  }
+}
