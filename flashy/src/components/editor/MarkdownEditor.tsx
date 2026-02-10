@@ -3,13 +3,15 @@ import { EditorView, basicSetup } from 'codemirror';
 import { EditorState } from '@codemirror/state';
 import { EditorView as EditorViewType } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
-import { yCollab, yRemoteSelections, yRemoteSelectionsTheme } from 'y-codemirror.next';
+import { yCollab } from 'y-codemirror.next';
 import { UndoManager } from 'yjs';
 import { collaborationManager } from '../../lib/CollaborationManager';
-import { EditorView as CMEditorView } from '@codemirror/view';
+import { EditorView as CMEditorView, ViewUpdate, ViewPlugin, Decoration, DecorationSet } from '@codemirror/view';
 import { getCursorDataUrl } from '../../config/cursorSvg';
 import { keymap } from '@codemirror/view';
 import { indentWithTab } from '@codemirror/commands';
+import { foldedRanges } from '@codemirror/language';
+import { RangeSet } from '@codemirror/state';
 import './MarkdownEditor.css';
 
 export function MarkdownEditor() {
@@ -63,6 +65,38 @@ export function MarkdownEditor() {
 
     console.log('📄 Initial Yjs content length:', ytext.length);
 
+    // Plugin to update fold gutter classes based on fold state
+    const foldStatePlugin = ViewPlugin.fromClass(class {
+      constructor(view: EditorView) {
+        setTimeout(() => this.updateFoldGutters(view), 100);
+      }
+
+      update(update: ViewUpdate) {
+        // Always update to catch fold state changes
+        setTimeout(() => this.updateFoldGutters(update.view), 50);
+      }
+
+      updateFoldGutters(view: EditorView) {
+        // Simple approach: check the marker character itself
+        // › = folded (should show chevron right)
+        // ⌄ = unfolded (should show chevron down)
+        const allGutters = view.dom.querySelectorAll('.cm-foldGutter .cm-gutterElement');
+
+        allGutters.forEach((gutter: Element) => {
+          const span = gutter.querySelector('span');
+
+          if (span && span.textContent) {
+            // If marker is › (right arrow), content is folded
+            if (span.textContent.includes('›')) {
+              gutter.classList.add('folded');
+            } else {
+              gutter.classList.remove('folded');
+            }
+          }
+        });
+      }
+    });
+
     // Create custom theme for local cursor color and custom mouse cursor
     const cursorTheme = CMEditorView.theme({
       '.cm-cursor, .cm-dropCursor': {
@@ -83,11 +117,11 @@ export function MarkdownEditor() {
       extensions: [
         basicSetup,
         markdown(),
+        foldStatePlugin,
         keymap.of([indentWithTab]),
         yCollab(ytext, provider.awareness, {
           undoManager,
         }),
-        yRemoteSelectionsTheme,
         cursorTheme,
       ],
     });
@@ -197,6 +231,13 @@ export function MarkdownEditor() {
 
   return (
     <div className="markdown-editor-wrapper">
+      <div className="breadcrumb">
+        <span className="breadcrumb-item">Home</span>
+        <span className="breadcrumb-separator">/</span>
+        <span className="breadcrumb-item">happy-chaos</span>
+        <span className="breadcrumb-separator">/</span>
+        <span className="breadcrumb-item breadcrumb-current">untitled.md</span>
+      </div>
       <div ref={editorRef} className="markdown-editor" />
     </div>
   );

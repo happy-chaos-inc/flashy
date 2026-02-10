@@ -1,12 +1,62 @@
-.study-mode-backdrop {
+.study-mode-panel {
   position: fixed;
-  top: 0;
+  top: 100px;
+  left: 24px;
+  right: 24px;
+  bottom: 24px;
+  width: auto;
+  height: calc(100vh - 124px);
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0 24px;
+  animation: slideInFromRight 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  box-sizing: border-box;
+  overflow: visible;
+  z-index: 1001;
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.study-close-button {
+  position: absolute;
   left: 0;
-  width: 100%;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 999;
-  animation: fadeIn 0.3s ease-out;
+  top: 50%;
+  transform: translateY(-50%) translateX(-50%);
+  background: white;
+  border: 1.5px solid #d1d5db;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  color: #6b7280;
+}
+
+.study-close-button:hover {
+  background: #f9fafb;
+  border-color: #B399D4;
+  color: #B399D4;
+  box-shadow: 0 4px 12px rgba(179, 153, 212, 0.2);
+  transform: translateY(-50%) translateX(-50%) scale(1.1);
 }
 
 @keyframes fadeIn {
@@ -18,7 +68,7 @@
   }
 }
 
-.study-mode-backdrop.closing {
+.study-mode-panel.closing {
   animation: fadeOut 0.3s ease-out forwards;
 }
 
@@ -31,60 +81,62 @@
   }
 }
 
-.study-mode-panel {
-  position: fixed;
-  top: 100px;
-  left: 24px;
-  right: 24px;
-  bottom: 24px;
-  background: white;
-  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.2);
-  border-radius: 12px;
-  z-index: 1000;
-  animation: slideIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  padding: 32px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
-.study-mode-panel.closing {
-  animation: slideOut 0.3s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards;
-}
-
-@keyframes slideOut {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(100%);
-  }
-}
-
 .study-mode-header {
-  position: absolute;
-  top: 32px;
-  left: 32px;
-  right: 32px;
+  width: 100%;
+  padding: 8px 24px 12px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
 .study-progress {
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 600;
   color: #B399D4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.starred-badge {
+  font-size: 14px;
+  color: #fbbf24;
+  font-weight: 500;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.starred-filter-button {
+  background: white;
+  border: 2px solid #d1d5db;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.starred-filter-button:hover:not(:disabled) {
+  border-color: #fbbf24;
+  color: #fbbf24;
+}
+
+.starred-filter-button.active {
+  background: #fbbf24;
+  border-color: #fbbf24;
+  color: white;
+}
+
+.starred-filter-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 .close-button {
@@ -95,6 +147,9 @@
   color: #6b7280;
   padding: 4px 8px;
   transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .close-button:hover {
@@ -102,15 +157,16 @@
 }
 
 .study-card-container {
-  width: 600px;
-  height: 400px;
+  width: 750px;
+  height: 420px;
   perspective: 1000px;
+  margin: auto 0;
 }
 
 .study-card {
   position: relative;
-  width: 600px;
-  height: 400px;
+  width: 750px;
+  height: 420px;
   cursor: pointer;
   transform-style: preserve-3d;
 }
@@ -163,7 +219,7 @@
 }
 
 .study-card-front {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #B399D4;
   color: white;
   transform: rotateX(0deg);
   transform-origin: 50% 50%;
@@ -171,7 +227,7 @@
 }
 
 .study-card-back {
-  background: linear-gradient(135deg, #B399D4 0%, #F5E1FD 100%);
+  background: #F5E1FD;
   color: #1f2937;
   transform: rotateX(180deg);
   transform-origin: 50% 50%;
@@ -313,10 +369,7 @@
 }
 
 .keyboard-shortcuts {
-  position: absolute;
-  bottom: 32px;
-  left: 32px;
-  right: 32px;
+  padding: 24px;
   display: flex;
   gap: 24px;
   justify-content: center;

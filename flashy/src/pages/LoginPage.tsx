@@ -1,5 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { Logo } from '../components/Logo';
 import './AuthPages.css';
 
 export function LoginPage() {
@@ -29,45 +30,33 @@ export function LoginPage() {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h1>Welcome to Flashy</h1>
-        <p className="auth-subtitle">Enter the shared password to access your study group's notes</p>
+        <div className="auth-header">
+          <Logo size={50} strokeColor="#333" />
+          <h1>Flashy</h1>
+        </div>
 
         <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-group">
-            <label htmlFor="username">Your Name</label>
-            <input
-              id="username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your name"
-              required
-              autoFocus
-            />
-          </div>
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Name"
+            required
+            autoFocus
+          />
 
-          <div className="form-group">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter shared password"
-              required
-            />
-          </div>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            required
+          />
 
           {error && <div className="error-message">{error}</div>}
 
-          <button type="submit" className="auth-button">
-            Enter
-          </button>
+          <button type="submit">Enter</button>
         </form>
-
-        <p className="auth-footer-note">
-          💡 This is a shared workspace for your study group
-        </p>
       </div>
     </div>
   );

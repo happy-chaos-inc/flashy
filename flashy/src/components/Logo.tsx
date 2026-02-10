@@ -1,4 +1,4 @@
-export function Logo({ size = 100 }: { size?: number }) {
+export function Logo({ size = 100, strokeColor }: { size?: number; strokeColor?: string }) {
   return (
     <svg
       width={size}
@@ -6,34 +6,49 @@ export function Logo({ size = 100 }: { size?: number }) {
       viewBox="0 0 300 300"
       xmlns="http://www.w3.org/2000/svg"
     >
-
-   <g transform="translate(-80,-40) scale(16) rotate(0)">
+    
+   <g transform="translate(-47,-10) scale(13) rotate(0)">
     <path d="
-      M11.75 17.5
+       M10 16.7
       L13 18.5
       C13.8321 19.1154 14.9154 18.8615 15.2857 18.0313L18.2815 11.4698C18.6518 10.6396 18.1606 9.67891 17.2518 9.53429L8.3871 8.16507
-      C7.4 8.02045 6.71766 8.79742 6.94815 9.68484
-      L7.7 13.5
-      C7.9 14.5 8 14.3 9 15.2
-    z
-    " fill="#F5E1FD
-" stroke="#F5E1FD
-" stroke-width="1.5"
-      stroke-linecap="round" stroke-linejoin="round"/>
+      C7 8.02045 6.71766 8.79742 6.34815 9.68484
+      L5.6 11.5
+      C4.5 13.9 5 13.7 8 15.5
+      z
+    " fill="#F5E1FD" stroke={strokeColor || "#F5E1FD"} strokeWidth="1.25"
+      strokeLinecap="round" strokeLinejoin="round"/>
+     
      
   </g>
-  <g transform="translate(-15, -80) scale(16) rotate(0)">
+  <g transform="translate(40, -34) scale(13) rotate(0)">
     <path d="
-      M11.75 17.5
+      M10 16.7
       L13 18.5
       C13.8321 19.1154 14.9154 18.8615 15.2857 18.0313L18.2815 11.4698C18.6518 10.6396 18.1606 9.67891 17.2518 9.53429L8.3871 8.16507
-      C7.4 8.02045 6.71766 8.79742 6.94815 9.68484
-      L7.7 13.5
-      C7.9 14.5 8 14.3 9 15.2
+      C7 8.02045 6.71766 8.79742 6.34815 9.68484
+      L5.6 11.5
+      C4.5 13.9 5 13.7 8 15.5
       z
-    " fill="#B399D4" stroke="#B399D4" stroke-width="1.5"
-      stroke-linecap="round" stroke-linejoin="round"/>
+    
+    " fill="#B399D4" stroke={strokeColor || "#B399D4"} strokeWidth="1.25"
+      strokeLinecap="round" strokeLinejoin="round"/>
   </g>
+     {/* <g transform="translate(69, 47) scale(7) rotate(0)">
+    <path d="
+      M10 16.7
+      L13 18.5
+      C13.8321 19.1154 14.9154 18.8615 15.2857 18.0313L18.2815 11.4698C18.6518 10.6396 18.1606 9.67891 17.2518 9.53429L8.3871 8.16507
+      C7 8.02045 6.71766 8.79742 6.34815 9.68484
+      L5.6 11.5
+      C4.5 13.9 5 13.7 8 15.5
+      z
+    
+    " fill="#F5E1FD" stroke={strokeColor || "white"} strokeWidth="2.9"
+      strokeLinecap="round" strokeLinejoin="round"/>
+  </g>  */}
+
+   
     </svg>
   );
 }

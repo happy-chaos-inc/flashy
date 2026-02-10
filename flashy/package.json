@@ -29,6 +29,7 @@
     "@types/react-dom": "^19.2.3",
     "codemirror": "^6.0.2",
     "lexical": "^0.40.0",
+    "lucide-react": "^0.563.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
@@ -44,9 +45,10 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "build:prod": "REACT_APP_ENV=production react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "predeploy": "npm run build",
+    "predeploy": "npm run build:prod",
     "deploy": "gh-pages -d build -m 'Deploy: %s'"
   },
   "eslintConfig": {

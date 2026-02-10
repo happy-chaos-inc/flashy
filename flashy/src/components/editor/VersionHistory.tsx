@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Clock } from 'lucide-react';
 import { supabase } from '../../config/supabase';
 import './VersionHistory.css';
 
@@ -114,7 +115,7 @@ export function VersionHistory({ onRestore }: VersionHistoryProps) {
           className="version-history-button"
           onClick={() => setIsOpen(!isOpen)}
         >
-          History ▼
+          <Clock size={16} /> History
         </button>
 
         {isOpen && (
