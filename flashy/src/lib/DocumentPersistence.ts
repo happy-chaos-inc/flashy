@@ -11,8 +11,8 @@ const DOCUMENT_ID = 'main-document'; // Single shared document for now
 const SAVE_DEBOUNCE_MS = 2000; // Save 2 seconds after last change
 
 // Version snapshot configuration
-const SNAPSHOT_EVERY_N_SAVES = 10; // Take snapshot every 10th save
-const SNAPSHOT_EVERY_SECONDS = 300; // OR every 5 minutes (300 seconds)
+const SNAPSHOT_EVERY_N_SAVES = 5; // Take snapshot every 5th save
+const SNAPSHOT_EVERY_SECONDS = 120; // OR every 2 minutes (120 seconds)
 
 export class DocumentPersistence {
   private doc: Y.Doc;
