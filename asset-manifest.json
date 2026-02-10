@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/happy-chaos/static/css/main.54e06b0e.css",
-    "main.js": "/happy-chaos/static/js/main.24c4736e.js",
+    "main.js": "/happy-chaos/static/js/main.eecf1cec.js",
     "static/js/453.ea3db366.chunk.js": "/happy-chaos/static/js/453.ea3db366.chunk.js",
     "index.html": "/happy-chaos/index.html",
     "main.54e06b0e.css.map": "/happy-chaos/static/css/main.54e06b0e.css.map",
-    "main.24c4736e.js.map": "/happy-chaos/static/js/main.24c4736e.js.map",
+    "main.eecf1cec.js.map": "/happy-chaos/static/js/main.eecf1cec.js.map",
     "453.ea3db366.chunk.js.map": "/happy-chaos/static/js/453.ea3db366.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.54e06b0e.css",
-    "static/js/main.24c4736e.js"
+    "static/js/main.eecf1cec.js"
   ]
 }
