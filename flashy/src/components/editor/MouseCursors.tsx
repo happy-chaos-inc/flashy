@@ -13,7 +13,6 @@ interface CursorData {
 
 export function MouseCursors() {
   const [cursors, setCursors] = useState<CursorData[]>([]);
-  const [localColor, setLocalColor] = useState('#6BCF7F');
 
   useEffect(() => {
     let cleanup: (() => void) | null = null;
@@ -25,7 +24,6 @@ export function MouseCursors() {
 
         // Get local user's color for CSS cursor - single source of truth from CollaborationManager
         const color = userInfo.color;
-    setLocalColor(color);
 
         // Get cursor URL from centralized config
         const cursorUrl = getCursorDataUrl(color);

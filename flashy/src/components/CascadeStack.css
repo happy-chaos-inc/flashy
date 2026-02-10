@@ -1,0 +1,15 @@
+.cascade-stack-container {
+  display: inline-block;
+  position: relative;
+}
+
+.cascade-card {
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.cascade-card:hover:not([style*="cursor: default"]) {
+  transform: translateY(-8px);
+  filter: brightness(0.95);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2) !important;
+}

@@ -1,17 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { EditorView, basicSetup } from 'codemirror';
 import { EditorState } from '@codemirror/state';
-import { EditorView as EditorViewType } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
 import { yCollab } from 'y-codemirror.next';
 import { UndoManager } from 'yjs';
 import { collaborationManager } from '../../lib/CollaborationManager';
-import { EditorView as CMEditorView, ViewUpdate, ViewPlugin, Decoration, DecorationSet } from '@codemirror/view';
+import { EditorView as CMEditorView, ViewUpdate, ViewPlugin } from '@codemirror/view';
 import { getCursorDataUrl } from '../../config/cursorSvg';
 import { keymap } from '@codemirror/view';
 import { indentWithTab } from '@codemirror/commands';
-import { foldedRanges } from '@codemirror/language';
-import { RangeSet } from '@codemirror/state';
 import './MarkdownEditor.css';
 
 export function MarkdownEditor() {
@@ -222,8 +219,25 @@ export function MarkdownEditor() {
           }
 
           if (element) {
-            // Use native smooth scroll
-            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Get both scrollable containers - the outer markdown-editor and CodeMirror's scroller
+            const editorContainer = view.dom.parentElement; // .markdown-editor
+            const cmScroller = view.scrollDOM; // .cm-scroller (CodeMirror's internal scroller)
+
+            // Use native smooth scroll for vertical only, nearest for horizontal
+            element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+
+            // Force horizontal scroll to leftmost position on BOTH scrollable elements
+            const resetHorizontalScroll = () => {
+              if (editorContainer) editorContainer.scrollLeft = 0;
+              if (cmScroller) cmScroller.scrollLeft = 0;
+            };
+
+            // Reset multiple times to override smooth scroll animation
+            resetHorizontalScroll(); // Immediately
+            requestAnimationFrame(resetHorizontalScroll); // Next frame
+            setTimeout(resetHorizontalScroll, 100); // During animation
+            setTimeout(resetHorizontalScroll, 300); // Mid animation
+            setTimeout(resetHorizontalScroll, 500); // After animation
 
             // Add highlight effect after scroll completes
             setTimeout(() => {

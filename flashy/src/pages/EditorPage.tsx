@@ -5,9 +5,10 @@ import { OnlineUsers } from '../components/editor/OnlineUsers';
 import { MouseCursors } from '../components/editor/MouseCursors';
 import { Logo } from '../components/Logo';
 import { StudyMode } from '../components/StudyMode';
+import { CascadeStack } from '../components/CascadeStack';
 import { collaborationManager } from '../lib/CollaborationManager';
-import { useEffect, useState } from 'react';
-import { Star, Lock, Clock, ChevronLeft, ChevronRight, Play, Edit2, X, HelpCircle } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Star, LogOut, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Play, Edit2, Info } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import './EditorPage.css';
 
@@ -32,15 +33,18 @@ export function EditorPage() {
   const [showStudyMode, setShowStudyMode] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(420);
   const [isDragging, setIsDragging] = useState(false);
-  const [clickedCardId, setClickedCardId] = useState<string | null>(null);
-  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
   const [previewCardIds, setPreviewCardIds] = useState<Set<string>>(new Set());
   const [flippedCardIds, setFlippedCardIds] = useState<Set<string>>(new Set());
   const [starredCards, setStarredCards] = useState<Set<string>>(() => {
     const saved = localStorage.getItem('starredCards');
     return saved ? new Set(JSON.parse(saved)) : new Set();
   });
+  const [showOnlyStarred, setShowOnlyStarred] = useState(false);
   const [isRoomFull, setIsRoomFull] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [showInfoMenu, setShowInfoMenu] = useState(false);
+  const infoMenuRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = () => {
     logout();
@@ -139,6 +143,17 @@ export function EditorPage() {
     localStorage.setItem('starredCards', JSON.stringify(Array.from(newStarred)));
   };
 
+  // Toggle section collapse
+  const toggleSectionCollapse = (sectionName: string) => {
+    const newCollapsed = new Set(collapsedSections);
+    if (newCollapsed.has(sectionName)) {
+      newCollapsed.delete(sectionName);
+    } else {
+      newCollapsed.add(sectionName);
+    }
+    setCollapsedSections(newCollapsed);
+  };
+
   // Handle resizing
   const handleMouseDown = () => {
     setIsDragging(true);
@@ -173,7 +188,7 @@ export function EditorPage() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isDragging]);
+  }, [isDragging, TOTAL_MARGIN, MIN_PANEL_WIDTH]);
 
   // Add scroll listener for navbar effect
   useEffect(() => {
@@ -185,6 +200,23 @@ export function EditorPage() {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Close info menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (infoMenuRef.current && !infoMenuRef.current.contains(event.target as Node)) {
+        setShowInfoMenu(false);
+      }
+    };
+
+    if (showInfoMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showInfoMenu]);
 
   // Subscribe to document changes
   useEffect(() => {
@@ -294,30 +326,31 @@ export function EditorPage() {
         </div>
         <div className="header-actions">
           <OnlineUsers />
+          
           <VersionHistory onRestore={handleRestore} />
           <button onClick={handleLogout} className="lock-button">
-            <Lock size={16} /> Lock
+            <LogOut size={22} />
           </button>
         </div>
       </div>
 
-      <div className="editor-content">
+      <div className={`editor-content ${isAnimating ? 'animating' : ''}`}>
         <MarkdownEditor />
       </div>
 
       <div
-        className="resize-handle"
+        className={`resize-handle ${isAnimating ? 'animating' : ''}`}
         style={{ right: `${sidebarWidth + 30}px` }}
         onMouseDown={handleMouseDown}
       >
         <div
-          className="resize-stick"
+          className={`resize-stick ${isAnimating ? 'animating' : ''}`}
           style={{ right: `${sidebarWidth + 30}px` }}
         />
       </div>
 
       {/* Sidebar rendered with fixed positioning */}
-      <div className="flashcard-sidebar">
+      <div className={`flashcard-sidebar ${isAnimating ? 'animating' : ''}`}>
           <div className="flashcard-header">
             <div className="flashcard-title-row">
               <div className="flashcard-title-left">
@@ -326,6 +359,7 @@ export function EditorPage() {
                   title="Toggle sidebar"
                   onClick={() => {
                     const maxWidth = window.innerWidth - (TOTAL_MARGIN + MIN_PANEL_WIDTH);
+                    setIsAnimating(true);
                     if (sidebarWidth >= maxWidth - 5) {
                       // At max, toggle to min
                       setSidebarWidth(MIN_PANEL_WIDTH);
@@ -336,6 +370,7 @@ export function EditorPage() {
                       // In middle, toggle to max
                       setSidebarWidth(maxWidth);
                     }
+                    setTimeout(() => setIsAnimating(false), 500);
                   }}
                 >
                   {(() => {
@@ -349,7 +384,12 @@ export function EditorPage() {
                 </button>
                 <h3>Flashcards</h3>
               </div>
-              <span className="flashcard-count">{flashcards.length} cards</span>
+              <span className="flashcard-count">
+                {showOnlyStarred
+                  ? `${flashcards.filter(card => starredCards.has(card.id)).length} starred`
+                  : `${flashcards.length} cards`
+                }
+              </span>
             </div>
             {flashcards.length > 0 && (
               <div className="toolbar-row">
@@ -362,17 +402,40 @@ export function EditorPage() {
                   Learn
                 </button>
                 <button
-                  className="toolbar-icon-button"
-                  title="Starred only"
+                  className={`toolbar-icon-button ${showOnlyStarred ? 'active' : ''}`}
+                  onClick={() => setShowOnlyStarred(!showOnlyStarred)}
+                  title={showOnlyStarred ? "Show all cards" : "Show starred only"}
                 >
-                  <Star size={20} fill="none" />
+                  <Star size={20} fill={showOnlyStarred ? "currentColor" : "none"} />
                 </button>
-                <button
-                  className="toolbar-icon-button"
-                  title="Unknown"
-                >
-                  <HelpCircle size={20} />
-                </button>
+                <div ref={infoMenuRef} style={{ position: 'relative' }}>
+                  <button
+                    className="toolbar-icon-button"
+                    title="Info"
+                    onClick={() => setShowInfoMenu(!showInfoMenu)}
+                  >
+                    <Info size={20} />
+                  </button>
+                  {showInfoMenu && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: '8px',
+                      background: 'white',
+                      border: '1px solid #ddd',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                      padding: '16px',
+                      zIndex: 1000,
+                      whiteSpace: 'nowrap'
+                    }}>
+                      <div style={{ fontSize: '14px', color: '#333', fontWeight: 500 }}>
+                    made with dreams
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -380,112 +443,197 @@ export function EditorPage() {
                 <p className="sidebar-placeholder">
                   Add H2 headers (## Term) to create flashcards
                 </p>
+              ) : showOnlyStarred && flashcards.filter(card => starredCards.has(card.id)).length === 0 ? (
+                <p className="sidebar-placeholder">
+                  No starred cards yet. Click the star icon on a card to add it to your favorites!
+                </p>
               ) : (
-                <div className="flashcard-list">
+                <>
                   {(() => {
-                    let lastSection = '';
-                    return flashcards.map((card) => {
-                      const showSection = card.section && card.section !== lastSection;
-                      lastSection = card.section || '';
-                      return (
-                        <div key={card.id}>
-                          {showSection && (
-                            <div className="flashcard-section">{card.section}</div>
-                          )}
+                    const filteredCards = showOnlyStarred
+                      ? flashcards.filter(card => starredCards.has(card.id))
+                      : flashcards;
 
-                          {previewCardIds.has(card.id) ? (
-                            // Expanded preview card
-                            <div className="sidebar-card-preview">
-                              <div
-                                className={`sidebar-preview-card ${flippedCardIds.has(card.id) ? 'flipped' : ''}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  togglePreviewFlip(card.id);
-                                }}
-                              >
-                                <div className="sidebar-preview-card-front">
-                                  <div className="card-header-row">
-                                    <button
-                                      className="preview-back-button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleFlashcardClick(card);
-                                      }}
-                                    >
-                                      <span style={{ display: 'flex', alignItems: 'center', gap: '2px', pointerEvents: 'none' }}>
-                                        <ChevronLeft size={14} />
-                                        Back
-                                      </span>
-                                    </button>
-                                    <div className="card-label">Term</div>
+                    // Group cards by section
+                    const sections: { [key: string]: typeof filteredCards } = {};
+                    filteredCards.forEach(card => {
+                      const sectionName = card.section || 'Unsorted';
+                      if (!sections[sectionName]) {
+                        sections[sectionName] = [];
+                      }
+                      sections[sectionName].push(card);
+                    });
+
+                    return Object.entries(sections).map(([sectionName, sectionCards]) => {
+                      const isCollapsed = collapsedSections.has(sectionName);
+                      return (
+                        <div key={sectionName} className="flashcard-section-group">
+                          <div
+                            className="flashcard-section"
+                            onClick={() => toggleSectionCollapse(sectionName)}
+                            style={{ cursor: 'pointer', position: 'relative', textAlign: 'center' }}
+                          >
+                            <span className="section-collapse-icon" style={{ position: 'absolute', left: '0px', top: '50%', transform: 'translateY(-50%)' }}>
+                              {isCollapsed ? <ChevronsDownUp size={16} /> : <ChevronsUpDown size={16} />}
+                            </span>
+                            {sectionName}
+                          </div>
+                          {isCollapsed ? (
+                            <div style={{ padding: '0 24px 16px 24px' }}>
+                              <CascadeStack
+                                key={`${sectionName}-${sectionCards.map(c => c.id).join('-')}`}
+                                cards={sectionCards}
+                                getCardBackground={(card) => starredCards.has(card.id) ? '#FEF3E2' : '#F9FAFB'}
+                                getCardBorderColor={(card) => starredCards.has(card.id) ? '#F59E0B' : '#B399D4'}
+                                cardGap={(() => {
+                                  const availableSpace = sidebarWidth - 188; // sidebar - padding - cardWidth
+                                  const maxGap = Math.floor(availableSpace / Math.max(1, sectionCards.length - 1));
+                                  return Math.max(1, Math.min(20, maxGap));
+                                })()}
+                                renderCard={(card, isFront) => (
+                                  <div
+                                    className={`flashcard stacked ${starredCards.has(card.id) ? 'starred' : ''}`}
+                                    style={{
+                                      border: 'none',
+                                      background: starredCards.has(card.id) ? '#FEF3E2' : '#F9FAFB'
+                                    }}
+                                  >
+                                    <div className="flashcard-content-wrapper">
+                                      <div className="flashcard-top-row">
+                                        <div className="flashcard-term">{card.term}</div>
+                                        <div className="flashcard-icons">
+                                          <button
+                                            className="icon-button edit"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              window.dispatchEvent(new CustomEvent('scrollToLine', {
+                                                detail: { lineNumber: card.lineNumber }
+                                              }));
+                                            }}
+                                            title="Edit in editor"
+                                          >
+                                            <Edit2 size={18} />
+                                          </button>
+                                          <button
+                                            className={`icon-button star ${starredCards.has(card.id) ? 'starred' : ''}`}
+                                            onClick={(e) => toggleStar(card.id, e)}
+                                            title={starredCards.has(card.id) ? 'Unstar' : 'Star'}
+                                          >
+                                            <Star size={18} fill={starredCards.has(card.id) ? 'currentColor' : 'none'} />
+                                          </button>
+                                        </div>
+                                      </div>
+                                      {card.definition && (
+                                        <div className="flashcard-definition">{card.definition}</div>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div className="card-content">{card.term}</div>
-                                </div>
-                                <div className="sidebar-preview-card-back">
-                                  <div className="card-header-row">
-                                    <button
-                                      className="preview-back-button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleFlashcardClick(card);
-                                      }}
-                                    >
-                                      <span style={{ display: 'flex', alignItems: 'center', gap: '2px', pointerEvents: 'none' }}>
-                                        <ChevronLeft size={14} />
-                                        Back
-                                      </span>
-                                    </button>
-                                    <div className="card-label">Definition</div>
-                                  </div>
-                                  <div className="card-content card-content-markdown">
-                                    <ReactMarkdown>{card.definition}</ReactMarkdown>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="preview-hint">Click to flip</div>
+                                )}
+                                cardWidth={140}
+                                cardHeight={79}
+                              />
                             </div>
                           ) : (
-                            // Normal flashcard
-                            <div
-                              className={`flashcard ${clickedCardId === card.id ? 'clicked' : ''} ${starredCards.has(card.id) ? 'starred' : ''}`}
-                              onClick={() => handleFlashcardClick(card)}
-                            >
-                              <div className="flashcard-content-wrapper">
-                                <div className="flashcard-top-row">
-                                  <div className="flashcard-term">{card.term}</div>
-                                  <div className="flashcard-icons">
-                                    <button
-                                      className="icon-button edit"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        window.dispatchEvent(new CustomEvent('scrollToLine', {
-                                          detail: { lineNumber: card.lineNumber }
-                                        }));
-                                      }}
-                                      title="Edit in editor"
-                                    >
-                                      <Edit2 size={18} />
-                                    </button>
-                                    <button
-                                      className={`icon-button star ${starredCards.has(card.id) ? 'starred' : ''}`}
-                                      onClick={(e) => toggleStar(card.id, e)}
-                                      title={starredCards.has(card.id) ? 'Unstar' : 'Star'}
-                                    >
-                                      <Star size={18} fill={starredCards.has(card.id) ? 'currentColor' : 'none'} />
-                                    </button>
+                          <div className="flashcard-list">
+                          {sectionCards.map((card) => (
+                            <div key={card.id}>
+                              {previewCardIds.has(card.id) ? (
+                                // Expanded preview card
+                                <div className="sidebar-card-preview">
+                                  <div
+                                    className={`sidebar-preview-card ${flippedCardIds.has(card.id) ? 'flipped' : ''}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      togglePreviewFlip(card.id);
+                                    }}
+                                  >
+                                    <div className="sidebar-preview-card-front">
+                                      <div className="card-header-row">
+                                        <button
+                                          className="preview-back-button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleFlashcardClick(card);
+                                          }}
+                                        >
+                                          <span style={{ display: 'flex', alignItems: 'center', gap: '2px', pointerEvents: 'none' }}>
+                                            <ChevronLeft size={14} />
+                                            Back
+                                          </span>
+                                        </button>
+                                        <div className="card-label">Term</div>
+                                      </div>
+                                      <div className="card-content">{card.term}</div>
+                                    </div>
+                                    <div className="sidebar-preview-card-back">
+                                      <div className="card-header-row">
+                                        <button
+                                          className="preview-back-button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleFlashcardClick(card);
+                                          }}
+                                        >
+                                          <span style={{ display: 'flex', alignItems: 'center', gap: '2px', pointerEvents: 'none' }}>
+                                            <ChevronLeft size={14} />
+                                            Back
+                                          </span>
+                                        </button>
+                                        <div className="card-label">Definition</div>
+                                      </div>
+                                      <div className="card-content card-content-markdown">
+                                        <ReactMarkdown>{card.definition}</ReactMarkdown>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="preview-hint">Click to flip</div>
+                                </div>
+                              ) : (
+                                // Normal flashcard
+                                <div
+                                  className={`flashcard ${starredCards.has(card.id) ? 'starred' : ''}`}
+                                  onClick={() => handleFlashcardClick(card)}
+                                >
+                                  <div className="flashcard-content-wrapper">
+                                    <div className="flashcard-top-row">
+                                      <div className="flashcard-term">{card.term}</div>
+                                      <div className="flashcard-icons">
+                                        <button
+                                          className="icon-button edit"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            window.dispatchEvent(new CustomEvent('scrollToLine', {
+                                              detail: { lineNumber: card.lineNumber }
+                                            }));
+                                          }}
+                                          title="Edit in editor"
+                                        >
+                                          <Edit2 size={18} />
+                                        </button>
+                                        <button
+                                          className={`icon-button star ${starredCards.has(card.id) ? 'starred' : ''}`}
+                                          onClick={(e) => toggleStar(card.id, e)}
+                                          title={starredCards.has(card.id) ? 'Unstar' : 'Star'}
+                                        >
+                                          <Star size={18} fill={starredCards.has(card.id) ? 'currentColor' : 'none'} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                    {card.definition && (
+                                      <div className="flashcard-definition">{card.definition}</div>
+                                    )}
                                   </div>
                                 </div>
-                                {card.definition && (
-                                  <div className="flashcard-definition">{card.definition}</div>
-                                )}
-                              </div>
+                              )}
                             </div>
+                          ))}
+                          </div>
                           )}
                         </div>
                       );
                     });
                   })()}
-                </div>
+                </>
               )}
       </div>
 

@@ -150,7 +150,6 @@ class CollaborationManager {
 
       // Get IndexedDB state BEFORE loading database
       // This preserves any local offline edits
-      const indexedDBState = Y.encodeStateAsUpdate(this.ydoc);
       const indexedDBLength = this.ydoc.getText('content').length;
 
       console.log('📊 IndexedDB state:', indexedDBLength, 'chars');

@@ -9,11 +9,8 @@
   background: white;
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px 0 24px;
+  display: block;
+  padding: 0;
   animation: slideInFromRight 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   box-sizing: border-box;
   overflow: visible;
@@ -82,11 +79,15 @@
 }
 
 .study-mode-header {
-  width: 100%;
-  padding: 8px 24px 12px 24px;
+  position: absolute;
+  top: 20px;
+  left: 24px;
+  right: 24px;
+  padding: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  z-index: 10;
 }
 
 .study-progress {
@@ -157,16 +158,22 @@
 }
 
 .study-card-container {
-  width: 750px;
-  height: 420px;
+  position: absolute;
+  top: 10%;
+  bottom: 10%;
+  left: 10%;
+  right: 10%;
   perspective: 1000px;
-  margin: auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .study-card {
   position: relative;
-  width: 750px;
-  height: 420px;
+  width: 60vw;
+  max-width: 800px;
+  aspect-ratio: 16 / 9;
   cursor: pointer;
   transform-style: preserve-3d;
 }
@@ -216,6 +223,7 @@
   padding: 32px 48px 48px 48px;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
 }
 
 .study-card-front {
@@ -369,6 +377,10 @@
 }
 
 .keyboard-shortcuts {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
   padding: 24px;
   display: flex;
   gap: 24px;

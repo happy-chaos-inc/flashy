@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Clock } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { History } from 'lucide-react';
 import { supabase } from '../../config/supabase';
 import './VersionHistory.css';
 
@@ -19,13 +19,7 @@ export function VersionHistory({ onRestore }: VersionHistoryProps) {
   const [loading, setLoading] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState<Version | null>(null);
 
-  useEffect(() => {
-    if (isOpen) {
-      loadVersions();
-    }
-  }, [isOpen]);
-
-  const loadVersions = async () => {
+  const loadVersions = useCallback(async () => {
     setLoading(true);
     try {
       // Get versions from last 30 days
@@ -48,7 +42,13 @@ export function VersionHistory({ onRestore }: VersionHistoryProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadVersions();
+    }
+  }, [isOpen, loadVersions]);
 
   const groupByDay = (versions: Version[]): Version[] => {
     const dayMap = new Map<string, Version>();
@@ -115,7 +115,7 @@ export function VersionHistory({ onRestore }: VersionHistoryProps) {
           className="version-history-button"
           onClick={() => setIsOpen(!isOpen)}
         >
-          <Clock size={16} /> History
+          <History size={22} />
         </button>
 
         {isOpen && (

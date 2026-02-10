@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { ChevronLast, Star, X } from 'lucide-react';
+import { Star, X } from 'lucide-react';
 import './StudyMode.css';
 
 interface Flashcard {
@@ -33,14 +33,14 @@ export function StudyMode({ flashcards, starredCards, onClose }: StudyModeProps)
 
   const currentCard = filteredCards[currentIndex];
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setIsClosing(true);
     setTimeout(() => {
       onClose();
     }, 300);
-  };
+  }, [onClose]);
 
-  const nextCard = () => {
+  const nextCard = useCallback(() => {
     if (currentIndex < filteredCards.length - 1) {
       setIsFlipped(false);
       setSlideDirection('left');
@@ -49,9 +49,9 @@ export function StudyMode({ flashcards, starredCards, onClose }: StudyModeProps)
         setSlideDirection(null);
       }, 300);
     }
-  };
+  }, [currentIndex, filteredCards.length]);
 
-  const prevCard = () => {
+  const prevCard = useCallback(() => {
     if (currentIndex > 0) {
       setIsFlipped(false);
       setSlideDirection('right');
@@ -60,7 +60,7 @@ export function StudyMode({ flashcards, starredCards, onClose }: StudyModeProps)
         setSlideDirection(null);
       }, 300);
     }
-  };
+  }, [currentIndex]);
 
   // Reset to first card when toggling starred-only mode
   const toggleStarredOnly = () => {
@@ -69,9 +69,9 @@ export function StudyMode({ flashcards, starredCards, onClose }: StudyModeProps)
     setIsFlipped(false);
   };
 
-  const toggleFlip = () => {
+  const toggleFlip = useCallback(() => {
     setIsFlipped(!isFlipped);
-  };
+  }, [isFlipped]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -92,15 +92,10 @@ export function StudyMode({ flashcards, starredCards, onClose }: StudyModeProps)
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, isFlipped]);
+  }, [handleClose, nextCard, prevCard, toggleFlip]);
 
   return (
     <div className={`study-mode-panel ${isClosing ? 'closing' : ''}`}>
-      {/* Close button on left edge, vertically centered */}
-      <button className="study-close-button" onClick={handleClose} title="Close study mode">
-        <ChevronLast size={20} />
-      </button>
-
       <div className="study-mode-header">
         <div className="study-progress">
           {currentIndex + 1} / {filteredCards.length}
