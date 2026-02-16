@@ -51,6 +51,14 @@
     "predeploy": "npm run build:prod",
     "deploy": "gh-pages -d build -m 'Deploy: %s'"
   },
+  "jest": {
+    "transformIgnorePatterns": [
+      "node_modules/(?!(yjs|lib0|y-protocols|y-indexeddb|y-codemirror.next|codemirror|@codemirror|@marijn|@lezer|style-mod|w3c-keyname|react-markdown|remark-.*|unified|bail|is-plain-obj|trough|vfile|vfile-message|unist-.*|mdast-.*|micromark.*|decode-named-character-reference|character-entities|escape-string-regexp|markdown-table|devlop|hast-.*|hastscript|property-information|space-separated-tokens|comma-separated-tokens|web-namespaces|ccount|zwitch)/)"
+    ],
+    "moduleNameMapper": {
+      "\\.(css|less|scss|sass)$": "identity-obj-proxy"
+    }
+  },
   "eslintConfig": {
     "extends": [
       "react-app",

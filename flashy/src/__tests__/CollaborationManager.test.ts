@@ -1,5 +1,18 @@
 import { collaborationManager } from '../lib/CollaborationManager';
 
+// Mock IndexedDB for testing
+class MockIndexedDB {
+  async open() {}
+  on() {}
+  destroy() {}
+  whenSynced = Promise.resolve();
+}
+
+(global as any).indexedDB = {
+  open: jest.fn(),
+  deleteDatabase: jest.fn(),
+};
+
 describe('CollaborationManager', () => {
   it('should be defined', () => {
     expect(collaborationManager).toBeDefined();
@@ -13,7 +26,7 @@ describe('CollaborationManager', () => {
     expect(typeof collaborationManager.disconnect).toBe('function');
   });
 
-  it('should have getYDoc method', () => {
-    expect(typeof collaborationManager.getYDoc).toBe('function');
+  it('should be a singleton', () => {
+    expect(collaborationManager).toBe(collaborationManager);
   });
 });

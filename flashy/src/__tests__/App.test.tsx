@@ -2,6 +2,18 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import App from '../App';
 
+// Mock react-markdown to avoid ESM issues in tests
+jest.mock('react-markdown', () => {
+  return function ReactMarkdown({ children }: { children: string }) {
+    return <div>{children}</div>;
+  };
+});
+
+// Mock test-broadcast to avoid broadcast testing in App tests
+jest.mock('../lib/test-broadcast', () => ({
+  testBroadcast: jest.fn().mockResolvedValue(undefined),
+}));
+
 // Mock Supabase to avoid real connections during tests
 jest.mock('../config/supabase', () => ({
   supabase: {
@@ -10,7 +22,12 @@ jest.mock('../config/supabase', () => ({
       onAuthStateChange: jest.fn().mockReturnValue({
         data: { subscription: { unsubscribe: jest.fn() } }
       })
-    }
+    },
+    channel: jest.fn().mockReturnValue({
+      on: jest.fn().mockReturnThis(),
+      subscribe: jest.fn().mockReturnThis(),
+      unsubscribe: jest.fn().mockResolvedValue({ error: null }),
+    })
   }
 }));
 
