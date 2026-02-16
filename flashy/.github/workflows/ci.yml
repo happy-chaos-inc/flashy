@@ -95,3 +95,4 @@ jobs:
           echo "::error::Version is not production-ready"
           exit 1
         fi
+# Test trigger
