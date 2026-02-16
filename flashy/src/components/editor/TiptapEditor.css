@@ -1,0 +1,243 @@
+.tiptap-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(179, 153, 212, 0.1);
+}
+
+.tiptap-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 24px;
+  border-bottom: 2px solid #E8D5F2;
+  background: linear-gradient(to bottom, #fbfbfb, #f9f9fc);
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(179, 153, 212, 0.08);
+}
+
+.tiptap-toolbar button {
+  background: white;
+  border: 1.5px solid #e5e7eb;
+  padding: 8px;
+  border-radius: 10px;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.tiptap-toolbar button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #F5E1FD 0%, #ffffff 100%);
+  border-color: #B399D4;
+  color: #8B6BB8;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(179, 153, 212, 0.2);
+}
+
+.tiptap-toolbar button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(179, 153, 212, 0.15);
+}
+
+.tiptap-toolbar button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  background: #f5f5f5;
+}
+
+.tiptap-toolbar button.is-active {
+  background: linear-gradient(135deg, #F5E1FD 0%, #E8D5F2 100%);
+  border-color: #B399D4;
+  color: #8B6BB8;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(179, 153, 212, 0.25);
+}
+
+.toolbar-divider {
+  width: 2px;
+  height: 28px;
+  background: linear-gradient(to bottom, transparent, #E8D5F2 20%, #E8D5F2 80%, transparent);
+  margin: 0 6px;
+  border-radius: 999px;
+}
+
+.tiptap-editor {
+  flex: 1;
+  padding: 24px;
+  font-size: 16px;
+  line-height: 1.6;
+  outline: none;
+  overflow-y: auto;
+  max-width: 900px; /* Slightly wider for more space, still readable */
+  margin: 0 auto; /* Centered */
+  width: 100%;
+}
+
+.tiptap-editor h1 {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 24px 0 16px 0;
+  color: #1a202c;
+  border-bottom: 3px solid #E8D5F2;
+  padding-bottom: 10px;
+  background: linear-gradient(to right, #F5E1FD 0%, transparent 100%);
+  padding-left: 12px;
+  border-radius: 4px;
+}
+
+.tiptap-editor h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 20px 0 12px 0;
+  color: #8B6BB8;
+  padding-left: 12px;
+  border-left: 4px solid #B399D4;
+  background: linear-gradient(to right, #F5E1FD10 0%, transparent 100%);
+  padding-top: 4px;
+  padding-bottom: 4px;
+  border-radius: 4px;
+}
+
+.tiptap-editor h3 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 16px 0 8px 0;
+  color: #4a5568;
+}
+
+.tiptap-editor p {
+  margin: 8px 0;
+}
+
+.tiptap-editor ul,
+.tiptap-editor ol {
+  padding-left: 24px;
+  margin: 8px 0;
+}
+
+.tiptap-editor li {
+  margin: 4px 0;
+}
+
+.tiptap-editor code {
+  background: #F5E1FD;
+  color: #8B6BB8;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  border: 1px solid #E8D5F2;
+  font-weight: 500;
+}
+
+.tiptap-editor pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 16px 0;
+}
+
+.tiptap-editor pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+.tiptap-editor blockquote {
+  border-left: 4px solid #B399D4;
+  padding-left: 16px;
+  margin: 16px 0;
+  color: #6b7280;
+  font-style: italic;
+  background: linear-gradient(to right, #F5E1FD15 0%, transparent 100%);
+  padding: 12px 16px;
+  border-radius: 4px;
+}
+
+.tiptap-editor strong {
+  font-weight: 700;
+  color: #8B6BB8;
+}
+
+.tiptap-editor em {
+  font-style: italic;
+  color: #9b7ec4;
+}
+
+/* Collaboration cursors */
+.tiptap-editor .collaboration-cursor__caret {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid;
+  border-right: 1px solid;
+  word-break: normal;
+  pointer-events: none;
+}
+
+.tiptap-editor .collaboration-cursor__label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: normal;
+  user-select: none;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px 4px 4px 0;
+  white-space: nowrap;
+}
+
+/* Loading state */
+.tiptap-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #8B6BB8;
+}
+
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid #F5E1FD;
+  border-top: 4px solid #B399D4;
+  border-radius: 50%;
+  animation: spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(179, 153, 212, 0.2);
+}
+
+.tiptap-loading p {
+  font-weight: 500;
+  color: #9b7ec4;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Placeholder */
+.tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
+  color: #B399D4;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  font-style: italic;
+  opacity: 0.6;
+}

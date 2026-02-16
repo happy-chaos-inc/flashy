@@ -1,0 +1,87 @@
+.migration-banner {
+  position: fixed;
+  top: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #F5E1FD 0%, #E8D5F2 100%);
+  border: 2px solid #B399D4;
+  border-radius: 16px;
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 600px;
+  box-shadow: 0 8px 32px rgba(179, 153, 212, 0.35), 0 2px 8px rgba(179, 153, 212, 0.2);
+  z-index: 250;
+  animation: slideDown 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(10px);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.migration-banner-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+}
+
+.migration-banner-icon {
+  color: #8B6BB8;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.migration-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.migration-banner-text strong {
+  color: #1a202c;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.migration-banner-text span {
+  color: #4a5568;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.migration-banner-close {
+  background: white;
+  border: 1.5px solid #B399D4;
+  color: #8B6BB8;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(179, 153, 212, 0.1);
+}
+
+.migration-banner-close:hover {
+  background: #8B6BB8;
+  color: white;
+  transform: scale(1.05);
+  box-shadow: 0 2px 6px rgba(179, 153, 212, 0.3);
+}
+
+.migration-banner-close:active {
+  transform: scale(0.95);
+}

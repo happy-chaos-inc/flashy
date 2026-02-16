@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { collaborationManager } from '../../lib/CollaborationManager';
+import { Edit, Code } from 'lucide-react';
 import './OnlineUsers.css';
 
 interface UserInfo {
   name: string;
   color: string;
   clientId: number;
+  mode?: 'wysiwyg' | 'markdown';
 }
 
 export function OnlineUsers() {
@@ -28,6 +30,7 @@ export function OnlineUsers() {
                 name: state.user.name,
                 color: state.user.color || '#999',
                 clientId,
+                mode: state.editorMode || 'markdown',
               });
             }
           });
@@ -59,16 +62,20 @@ export function OnlineUsers() {
 
   return (
     <div className="online-users">
-      {users.map((user) => (
-        <div
-          key={user.clientId}
-          className="online-user"
-          style={{ backgroundColor: user.color }}
-          title={user.name}
-        >
-          {user.name}
-        </div>
-      ))}
+      {users.map((user) => {
+        const ModeIcon = user.mode === 'wysiwyg' ? Edit : Code;
+        return (
+          <div
+            key={user.clientId}
+            className="online-user"
+            style={{ backgroundColor: user.color }}
+            title={`${user.name} (${user.mode === 'wysiwyg' ? 'WYSIWYG' : 'Markdown'})`}
+          >
+            <span className="user-name">{user.name}</span>
+            <ModeIcon size={12} className="user-mode-icon" />
+          </div>
+        );
+      })}
     </div>
   );
 }

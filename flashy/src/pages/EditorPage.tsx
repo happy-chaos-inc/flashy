@@ -1,11 +1,14 @@
 import { useAuth } from '../hooks/useAuth';
 import { MarkdownEditor } from '../components/editor/MarkdownEditor';
+import { TiptapEditor } from '../components/editor/TiptapEditor';
 import { VersionHistory } from '../components/editor/VersionHistory';
 import { OnlineUsers } from '../components/editor/OnlineUsers';
 import { MouseCursors } from '../components/editor/MouseCursors';
 import { Logo } from '../components/Logo';
 import { StudyMode } from '../components/StudyMode';
+import { ModeSelector, EditorMode } from '../components/editor/ModeSelector';
 import { collaborationManager } from '../lib/CollaborationManager';
+import { prosemirrorToMarkdown } from '../lib/prosemirrorToMarkdown';
 import { useEffect, useState, useRef } from 'react';
 import { Star, LogOut, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Play, Edit2, Info } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -26,7 +29,6 @@ export function EditorPage() {
   const MIN_PANEL_WIDTH = 400;
   const MARGIN_LEFT = 24;
   const MARGIN_GAP = 16;
-  const TOTAL_MARGIN = MARGIN_LEFT + MARGIN_GAP; // 40
 
   const { logout } = useAuth();
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
@@ -48,10 +50,29 @@ export function EditorPage() {
   const [showInfoMenu, setShowInfoMenu] = useState(false);
   const infoMenuRef = useRef<HTMLDivElement>(null);
   const hasInitializedSections = useRef(false);
+  const [editorMode, setEditorMode] = useState<EditorMode>(() => {
+    const saved = localStorage.getItem('flashy_editor_mode');
+    return (saved as EditorMode) || 'markdown';
+  });
 
   const handleLogout = () => {
     logout();
     // No navigation - auth state change will trigger re-render
+  };
+
+  const handleModeChange = async (mode: EditorMode) => {
+    // No sync needed - Y.XmlFragment is the only source of truth
+    // Both editors read/write to Y.XmlFragment
+    setEditorMode(mode);
+    localStorage.setItem('flashy_editor_mode', mode);
+
+    // Broadcast mode change via awareness
+    try {
+      const { provider } = await collaborationManager.connect();
+      provider.awareness.setLocalStateField('editorMode', mode);
+    } catch (error) {
+      console.error('Failed to broadcast mode change:', error);
+    }
   };
 
   const handleRestore = async (version: number) => {
@@ -198,7 +219,8 @@ export function EditorPage() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isDragging, TOTAL_MARGIN, MIN_PANEL_WIDTH]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDragging, dragStartX]);
 
   // Collapse all sections by default on first load
   useEffect(() => {
@@ -208,6 +230,20 @@ export function EditorPage() {
       hasInitializedSections.current = true;
     }
   }, [flashcards]);
+
+  // Keyboard shortcut for mode switching (Ctrl/Cmd + Shift + M)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') {
+        e.preventDefault();
+        const newMode = editorMode === 'wysiwyg' ? 'markdown' : 'wysiwyg';
+        handleModeChange(newMode);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editorMode]);
 
   // Add scroll listener for navbar effect
   useEffect(() => {
@@ -241,24 +277,34 @@ export function EditorPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        const { ydoc } = await collaborationManager.connect();
-        const ytext = ydoc.getText('content');
+        const { ydoc, provider } = await collaborationManager.connect();
+
+        // Broadcast initial editor mode
+        provider.awareness.setLocalStateField('editorMode', editorMode);
+
+        // Y.XmlFragment is the ONLY source of truth
+        const yXmlFragment = ydoc.getXmlFragment('prosemirror');
+
+        // Serialize Y.XmlFragment to markdown for flashcard parsing
+        const getContent = (): string => {
+          return prosemirrorToMarkdown(yXmlFragment);
+        };
 
         // Initial parse
-        const initialCards = parseFlashcards(ytext.toString());
+        const initialCards = parseFlashcards(getContent());
         setFlashcards(initialCards);
 
-        // Listen for changes
-        const observer = () => {
-          const content = ytext.toString();
+        // Listen for Y.XmlFragment changes (both modes)
+        const yXmlObserver = () => {
+          const content = prosemirrorToMarkdown(yXmlFragment);
           const cards = parseFlashcards(content);
           setFlashcards(cards);
         };
 
-        ytext.observe(observer);
+        yXmlFragment.observeDeep(yXmlObserver);
 
         return () => {
-          ytext.unobserve(observer);
+          yXmlFragment.unobserveDeep(yXmlObserver);
         };
       } catch (error: any) {
         if (error.message === 'ROOM_FULL') {
@@ -271,7 +317,7 @@ export function EditorPage() {
     };
 
     init();
-  }, []);
+  }, [editorMode]);
 
   // Show "party full" message if room is at capacity
   if (isRoomFull) {
@@ -347,7 +393,7 @@ export function EditorPage() {
         </div>
         <div className="header-actions">
           <OnlineUsers />
-          
+          <ModeSelector currentMode={editorMode} onModeChange={handleModeChange} />
           <VersionHistory onRestore={handleRestore} />
           <button onClick={handleLogout} className="lock-button">
             <LogOut size={22} />
@@ -356,7 +402,7 @@ export function EditorPage() {
       </div>
 
       <div className={`editor-content ${isAnimating ? 'animating' : ''}`}>
-        <MarkdownEditor />
+        {editorMode === 'wysiwyg' ? <TiptapEditor /> : <MarkdownEditor />}
       </div>
 
       <div

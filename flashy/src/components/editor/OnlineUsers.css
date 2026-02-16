@@ -15,8 +15,20 @@
   white-space: nowrap;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .online-user:hover {
   transform: scale(1.05);
+}
+
+.user-name {
+  flex-shrink: 0;
+}
+
+.user-mode-icon {
+  opacity: 0.8;
+  flex-shrink: 0;
 }
