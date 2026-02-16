@@ -103,7 +103,7 @@
 }
 
 .resize-handle {
-  width: 12px;
+  width: 48px;
   background: transparent;
   cursor: ew-resize;
   position: fixed;
@@ -114,6 +114,7 @@
   align-items: center;
   justify-content: center;
   z-index: 101;
+  overflow: visible;
 }
 
 .resize-handle.animating {
@@ -128,13 +129,14 @@
   transition: background 0.2s, transform 0.2s;
   pointer-events: none;
   transform-origin: center center;
+  z-index: 1;
 }
 
 .resize-stick.animating {
   transition: background 0.2s, transform 0.2s;
 }
 
-.resize-handle:hover .resize-stick {
+.resize-handle:hover:not(:has(.resize-toggle-button:hover)) .resize-stick {
   background: linear-gradient(to bottom, transparent, #B399D4 20%, #B399D4 80%, transparent);
   transform: scaleX(2);
 }
@@ -144,28 +146,20 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 36px;
-  height: 36px;
-  background: white;
-  border: 1.5px solid #d1d5db;
-  border-radius: 50%;
+  background: transparent;
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: #6b7280;
-  transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  z-index: 102;
+  transition: transform 0.2s;
+  z-index: 250;
   pointer-events: auto;
+  padding: 0;
 }
 
 .resize-toggle-button:hover {
-  background: #f9fafb;
-  border-color: #B399D4;
-  color: #B399D4;
-  box-shadow: 0 4px 12px rgba(179, 153, 212, 0.3);
-  transform: translate(-50%, -50%) scale(1.1);
+  transform: translate(-50%, -50%) scale(1.15);
 }
 
 .resize-toggle-button.animating {

@@ -35,6 +35,7 @@ export function EditorPage() {
   const [sidebarWidth, setSidebarWidth] = useState(420);
   const [isDragging, setIsDragging] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [dragStartX, setDragStartX] = useState<number | null>(null);
   const [previewCardIds, setPreviewCardIds] = useState<Set<string>>(new Set());
   const [flippedCardIds, setFlippedCardIds] = useState<Set<string>>(new Set());
   const [starredCards, setStarredCards] = useState<Set<string>>(() => {
@@ -46,6 +47,7 @@ export function EditorPage() {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [showInfoMenu, setShowInfoMenu] = useState(false);
   const infoMenuRef = useRef<HTMLDivElement>(null);
+  const hasInitializedSections = useRef(false);
 
   const handleLogout = () => {
     logout();
@@ -156,17 +158,23 @@ export function EditorPage() {
   };
 
   // Handle resizing
-  const handleMouseDown = () => {
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setDragStartX(e.clientX);
     setIsDragging(true);
   };
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
+      if (!isDragging || dragStartX === null) return;
+
+      // Only start dragging if moved more than 3 pixels
+      const dragDistance = Math.abs(e.clientX - dragStartX);
+      if (dragDistance < 3) return;
 
       const newWidth = window.innerWidth - e.clientX;
       // Ensure sidebar is at least MIN_PANEL_WIDTH AND editor maintains MIN_PANEL_WIDTH
-      const maxWidth = window.innerWidth - (TOTAL_MARGIN + MIN_PANEL_WIDTH);
+      // Account for: left margin + editor min width + gap + right margin
+      const maxWidth = window.innerWidth - (MARGIN_LEFT + MIN_PANEL_WIDTH + MARGIN_GAP + MARGIN_LEFT);
       if (newWidth >= MIN_PANEL_WIDTH && newWidth <= maxWidth) {
         setSidebarWidth(newWidth);
       }
@@ -174,6 +182,7 @@ export function EditorPage() {
 
     const handleMouseUp = () => {
       setIsDragging(false);
+      setDragStartX(null);
     };
 
     if (isDragging) {
@@ -190,6 +199,15 @@ export function EditorPage() {
       document.body.style.userSelect = '';
     };
   }, [isDragging, TOTAL_MARGIN, MIN_PANEL_WIDTH]);
+
+  // Collapse all sections by default on first load
+  useEffect(() => {
+    if (!hasInitializedSections.current && flashcards.length > 0) {
+      const allSections = new Set(flashcards.map(card => card.section || 'Unsorted'));
+      setCollapsedSections(allSections);
+      hasInitializedSections.current = true;
+    }
+  }, [flashcards]);
 
   // Add scroll listener for navbar effect
   useEffect(() => {
@@ -343,7 +361,7 @@ export function EditorPage() {
 
       <div
         className={`resize-handle ${isAnimating ? 'animating' : ''}`}
-        style={{ right: `calc(var(--sidebar-width) + var(--margin-left) + var(--margin-gap) / 2 - 6px)` }}
+        style={{ right: `calc(var(--sidebar-width) + var(--margin-left) + var(--margin-gap) / 2 - 24px)` }}
         onMouseDown={handleMouseDown}
       >
         <div
@@ -351,33 +369,55 @@ export function EditorPage() {
         />
         <button
           className={`resize-toggle-button ${isAnimating ? 'animating' : ''}`}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+          }}
           onClick={(e) => {
             e.stopPropagation();
-            const maxWidth = window.innerWidth - (TOTAL_MARGIN + MIN_PANEL_WIDTH);
-            const mediumWidth = Math.floor(window.innerWidth * 0.6);
+            const maxWidth = window.innerWidth - (MARGIN_LEFT + MIN_PANEL_WIDTH + MARGIN_GAP + MARGIN_LEFT);
             setIsAnimating(true);
             if (sidebarWidth >= maxWidth - 5) {
               // At max, toggle to min
               setSidebarWidth(MIN_PANEL_WIDTH);
-            } else if (sidebarWidth <= MIN_PANEL_WIDTH + 5) {
-              // At min, toggle to medium
-              setSidebarWidth(Math.min(mediumWidth, maxWidth));
-            } else if (sidebarWidth < maxWidth - 5) {
-              // At medium, toggle to max
+            } else {
+              // Otherwise, go to max
               setSidebarWidth(maxWidth);
             }
             setTimeout(() => setIsAnimating(false), 500);
           }}
           title="Toggle sidebar"
         >
-          {(() => {
-            const maxWidth = window.innerWidth - (TOTAL_MARGIN + MIN_PANEL_WIDTH);
-            if (sidebarWidth >= maxWidth - 5) {
-              return <ChevronRight size={20} />;
-            } else {
-              return <ChevronLeft size={20} />;
-            }
-          })()}
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg
+              width={32}
+              height={32}
+              viewBox="0 0 55 55"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <g transform="translate(-30, -13) scale(4) rotate(-15)">
+                <path d="
+                  M10 16.7
+                  L13 18.5
+                  C13.8321 19.1154 14.9154 18.8615 15.2857 18.0313L18.2815 11.4698C18.6518 10.6396 18.1606 9.67891 17.2518 9.53429L8.3871 8.16507
+                  C7 8.02045 6.71766 8.79742 6.34815 9.68484
+                  L5.6 11.5
+                  C4.5 13.9 5 13.7 8 15.5
+                  z
+                " fill="#B399D4" stroke="#B399D4" strokeWidth="1.25"
+                  strokeLinecap="round" strokeLinejoin="round"/>
+              </g>
+            </svg>
+            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white' }}>
+              {(() => {
+                const maxWidth = window.innerWidth - (MARGIN_LEFT + MIN_PANEL_WIDTH + MARGIN_GAP + MARGIN_LEFT);
+                if (sidebarWidth >= maxWidth - 5) {
+                  return <ChevronRight size={14} />;
+                } else {
+                  return <ChevronLeft size={14} />;
+                }
+              })()}
+            </div>
+          </div>
         </button>
       </div>
 
