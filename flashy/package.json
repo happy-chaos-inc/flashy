@@ -2,7 +2,7 @@
   "name": "flashy-temp",
   "version": "0.2.2",
   "private": true,
-  "homepage": "https://aatran14.github.io/happy-chaos",
+  "homepage": "https://happy-chaos-inc.github.io/flashy",
   "dependencies": {
     "@codemirror/commands": "^6.10.1",
     "@codemirror/lang-markdown": "^6.5.0",
