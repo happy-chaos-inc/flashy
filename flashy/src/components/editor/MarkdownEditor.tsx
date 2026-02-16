@@ -275,6 +275,7 @@ export function MarkdownEditor() {
       collaborationManager.disconnect();
       viewRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Enable editor when ready (Rule 2)

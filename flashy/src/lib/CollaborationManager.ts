@@ -1,5 +1,4 @@
 // Singleton manager for collaboration
-import * as Y from 'yjs';
 import { Doc } from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { SimpleSupabaseProvider } from './SimpleSupabaseProvider';
