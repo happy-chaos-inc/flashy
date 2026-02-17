@@ -393,7 +393,6 @@ export function EditorPage() {
         </div>
         <div className="header-actions">
           <OnlineUsers />
-          <ModeSelector currentMode={editorMode} onModeChange={handleModeChange} />
           <VersionHistory onRestore={handleRestore} />
           <button onClick={handleLogout} className="lock-button">
             <LogOut size={22} />
@@ -402,6 +401,9 @@ export function EditorPage() {
       </div>
 
       <div className={`editor-content ${isAnimating ? 'animating' : ''}`}>
+        <div className="mode-selector-overlay">
+          <ModeSelector currentMode={editorMode} onModeChange={handleModeChange} />
+        </div>
         {editorMode === 'wysiwyg' ? <TiptapEditor /> : <MarkdownEditor />}
       </div>
 

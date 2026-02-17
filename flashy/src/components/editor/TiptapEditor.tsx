@@ -81,7 +81,7 @@ export function TiptapEditor() {
           history: false, // Disable local history (use Y.js undo/redo)
         }),
         Placeholder.configure({
-          placeholder: 'Start writing... (Type / for commands, ## for headings)',
+          placeholder: 'Start typing to create your first flashcard... (Use ## for headings)',
         }),
         TabIndentation, // Add Tab key support for list indentation
         ...(ydoc && provider
