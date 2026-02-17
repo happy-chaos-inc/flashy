@@ -47,7 +47,7 @@ export function MarkdownEditor() {
     (async () => {
       try {
         // Get Yjs doc and provider
-        const { ydoc: doc, provider, userInfo } = await collaborationManager.connect();
+        const { ydoc: doc, userInfo } = await collaborationManager.connect();
         ydoc = doc;
         yXmlFragment = doc.getXmlFragment('prosemirror');
 
