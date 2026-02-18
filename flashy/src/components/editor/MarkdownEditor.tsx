@@ -63,7 +63,8 @@ export function MarkdownEditor({ scrollTarget, isActive = true }: MarkdownEditor
         yXmlFragment = doc.getXmlFragment('prosemirror');
 
         const userColor = userInfo.color;
-        const cursorDataUrl = getCursorDataUrl(userColor);
+        // Cursor data URL for potential future cursor styling
+        void getCursorDataUrl(userColor);
 
         logger.log('📊 Connected to Y.XmlFragment:', {
           clientID: doc.clientID,

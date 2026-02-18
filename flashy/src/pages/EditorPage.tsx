@@ -13,7 +13,7 @@ import { ChatSidebar } from '../components/ChatSidebar';
 import { collaborationManager } from '../lib/CollaborationManager';
 import { prosemirrorToMarkdown } from '../lib/prosemirrorToMarkdown';
 import { logger } from '../lib/logger';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { LogOut, ChevronLeft, ChevronRight, Share2, Check } from 'lucide-react';
 import './EditorPage.css';
 
@@ -264,6 +264,7 @@ export function EditorPage({ roomId }: EditorPageProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorMode]);
 
   // Add scroll listener for navbar effect

@@ -19,7 +19,7 @@ interface OnlineUsersProps {
 
 export function OnlineUsers({ onUserClick }: OnlineUsersProps) {
   const [users, setUsers] = useState<UserInfo[]>([]);
-  const [localClientId, setLocalClientId] = useState<number | null>(null);
+  const [, setLocalClientId] = useState<number | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [usedColors, setUsedColors] = useState<string[]>([]);
   const colorPickerRef = useRef<HTMLDivElement>(null);

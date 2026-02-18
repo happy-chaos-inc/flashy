@@ -32,7 +32,7 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [isLeader, setIsLeader] = useState(false);
+  const [, setIsLeader] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [remainingMessages, setRemainingMessages] = useState<number | null>(null);
@@ -252,6 +252,7 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
     return () => {
       if (cleanup) cleanup();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Handle prompt input change
