@@ -497,7 +497,6 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
 
             // Store file data for the API call
             pendingFilesRef.current.set(userMessage.id, { images, extractedText });
-            respondedMessagesRef.current.add(userMessage.id);
 
             // Clear local files and shared meta
             localFilesRef.current.clear();
@@ -538,11 +537,40 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
           setIsLeader(amLeader);
         };
 
+        // Clean up attachments and pending send requests from disconnected peers
+        const cleanupDisconnectedAttachments = ({ removed }: { added: number[], updated: number[], removed: number[] }) => {
+          if (removed.length === 0) return;
+          const removedSet = new Set(removed);
+          const allMeta = yAttachmentsMeta.toArray();
+          // Walk backwards so indices stay valid as we delete
+          for (let i = allMeta.length - 1; i >= 0; i--) {
+            if (removedSet.has(allMeta[i].ownerId)) {
+              logger.log('[Chat] Removing attachment from disconnected peer:', allMeta[i].name, allMeta[i].ownerName);
+              yAttachmentsMeta.delete(i, 1);
+            }
+          }
+
+          // If there's a pending send request and no one with files is left to handle it,
+          // clear it so the requester isn't stuck waiting
+          const pendingRequestId = ySendRequest.get('id');
+          if (pendingRequestId && !ySendRequest.get('handledBy')) {
+            const remainingMeta = yAttachmentsMeta.toArray();
+            if (remainingMeta.length === 0) {
+              logger.log('[Chat] No file owners left online, clearing stale send request');
+              ySendRequest.delete('id');
+              ySendRequest.delete('prompt');
+              ySendRequest.delete('requestedBy');
+              ySendRequest.delete('handledBy');
+            }
+          }
+        };
+
         // Initial leader check with small delay to let awareness sync
         setTimeout(updateLeaderStatus, 500);
 
-        // Re-check leader on awareness changes
+        // Re-check leader and clean up on awareness changes
         provider.awareness.on('change', updateLeaderStatus);
+        provider.awareness.on('change', cleanupDisconnectedAttachments);
 
         cleanup = () => {
           yText.unobserve(textObserver);
@@ -550,6 +578,7 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
           yAttachmentsMeta.unobserve(attachmentsMetaObserver);
           ySendRequest.unobserve(sendRequestObserver);
           provider.awareness.off('change', updateLeaderStatus);
+          provider.awareness.off('change', cleanupDisconnectedAttachments);
           collaborationManager.disconnect();
         };
       } catch (error) {
@@ -785,7 +814,6 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
 
     // If this message has attachments, we handle the API call ourselves
     if (hasLocalFiles) {
-      respondedMessagesRef.current.add(userMessage.id);
       handleLeaderResponse(userMessage, yArray);
     }
   };
