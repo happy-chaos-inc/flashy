@@ -1,5 +1,5 @@
 // Singleton manager for collaboration
-import { Doc, Text as YText, Array as YArray } from 'yjs';
+import { Doc, Text as YText, Array as YArray, XmlElement } from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { SimpleSupabaseProvider } from './SimpleSupabaseProvider';
 import { DocumentPersistence } from './DocumentPersistence';
@@ -13,6 +13,23 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   author?: { name: string; color: string };  // For user messages
+  timestamp: number;
+}
+
+// Shared attachment metadata - just names, not the actual data
+export interface SharedAttachmentMeta {
+  id: string;
+  name: string;
+  mimeType: string;
+  ownerId: number;  // clientID of the peer who has this file
+  ownerName: string;
+}
+
+// Send request - when someone presses Enter, this triggers the peer with files to send
+export interface SendRequest {
+  id: string;
+  prompt: string;
+  requestedBy: number;  // clientID who pressed Enter
   timestamp: number;
 }
 
@@ -268,6 +285,15 @@ class CollaborationManager {
         logger.log('📝 No database content, using IndexedDB state only');
       }
 
+      // Seed new rooms with 14 empty lines
+      const xmlFragment = this.ydoc.getXmlFragment('prosemirror');
+      if (xmlFragment.length === 0) {
+        logger.log('📝 New room detected - initializing with 14 empty lines');
+        for (let i = 0; i < 14; i++) {
+          xmlFragment.push([new XmlElement('paragraph')]);
+        }
+      }
+
       // Enable auto-save after loading
       this.persistence.enableAutoSave();
 
@@ -312,6 +338,24 @@ class CollaborationManager {
   getChatMessages(): YArray<ChatMessage> | null {
     if (!this.ydoc) return null;
     return this.ydoc.getArray<ChatMessage>('chat-messages');
+  }
+
+  /**
+   * Get the shared chat attachment metadata Y.Array
+   * Just metadata - actual files stay in the owner's browser
+   */
+  getChatAttachmentsMeta(): YArray<SharedAttachmentMeta> | null {
+    if (!this.ydoc) return null;
+    return this.ydoc.getArray<SharedAttachmentMeta>('chat-attachments-meta');
+  }
+
+  /**
+   * Get the send request Y.Map
+   * When someone presses Enter, this signals the peer with files to make the API call
+   */
+  getSendRequest(): import('yjs').Map<any> | null {
+    if (!this.ydoc) return null;
+    return this.ydoc.getMap('chat-send-request');
   }
 
   /**
