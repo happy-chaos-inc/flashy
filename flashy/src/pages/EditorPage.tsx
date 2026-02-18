@@ -14,7 +14,7 @@ import { collaborationManager } from '../lib/CollaborationManager';
 import { prosemirrorToMarkdown } from '../lib/prosemirrorToMarkdown';
 import { logger } from '../lib/logger';
 import { useEffect, useState } from 'react';
-import { LogOut, ChevronLeft, ChevronRight, Share2, Check } from 'lucide-react';
+import { LogOut, ChevronLeft, ChevronRight, Share2, Check, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import './EditorPage.css';
 
 // Type for user info from OnlineUsers
@@ -41,8 +41,10 @@ export function EditorPage({ roomId }: EditorPageProps) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [showStudyMode, setShowStudyMode] = useState(false);
   // Three-panel layout: left sidebar (flashcards), center (editor), right sidebar (chat)
-  const [leftSidebarWidth, setLeftSidebarWidth] = useState(420);
-  const [rightSidebarWidth, setRightSidebarWidth] = useState(420);
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(320);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(320);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
   const [isDraggingLeft, setIsDraggingLeft] = useState(false);
   const [isDraggingRight, setIsDraggingRight] = useState(false);
   const [isAnimatingLeft, setIsAnimatingLeft] = useState(false);
