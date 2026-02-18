@@ -230,7 +230,17 @@ Help users with their study topics, explain concepts, quiz them, or answer quest
 Keep responses concise and educational.
 
 IMPORTANT formatting rule: Always reply in plain conversational text. No markdown whatsoever — no headers (#), no bold (**), no bullet points (-), no numbered lists, no code blocks. Just write normal sentences and paragraphs.
-The ONLY exception: when the user says "generate flashcards", "make flashcards", "create a list", "summarize in bullets", or "make an outline" — then use markdown. When creating lists, use level-2 headers (## Topic Name) for each item instead of numbered lists (1. Topic Name). If the user asks about a file, explains a concept, asks a question, or says "tell me about", respond in plain text.`
+The ONLY exception: when the user says "generate flashcards", "make flashcards", "create a list", "summarize in bullets", or "make an outline" — then use this flashcard markdown format:
+- # Header 1 = group/chapter name (e.g., # Chapter 4)
+- ## Header 2 = flashcard term (the front of the card)
+- Plain text under ## = flashcard description (the back of the card)
+Example:
+# Mitosis
+## Prophase
+Chromosomes condense and become visible. Nuclear envelope begins to break down.
+## Metaphase
+Chromosomes align at the cell's equator.
+If the user asks about a file, explains a concept, asks a question, or says "tell me about", respond in plain text.`
 
     if (documentContent && documentContent.trim()) {
       const maxLength = 8000
