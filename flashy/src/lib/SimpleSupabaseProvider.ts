@@ -1,11 +1,16 @@
 /**
  * Simple Supabase Provider for Yjs
- * Minimal implementation - no workarounds, just the basics
+ * With auto-reconnection and offline queue support
  */
 import * as Y from 'yjs';
 import * as awarenessProtocol from 'y-protocols/awareness';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { logger } from './logger';
+
+// Reconnection settings
+const INITIAL_RECONNECT_DELAY = 1000; // 1 second
+const MAX_RECONNECT_DELAY = 30000; // 30 seconds
+const MAX_RECONNECT_ATTEMPTS = 10;
 
 export class SimpleSupabaseProvider {
   doc: Y.Doc;
@@ -17,13 +22,22 @@ export class SimpleSupabaseProvider {
   private broadcastingSetup: boolean = false;
   private eventHandlers: Map<string, Set<Function>> = new Map();
 
+  // Reconnection state
+  private reconnectAttempts: number = 0;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private isDestroyed: boolean = false;
+
+  // Offline queue - store updates when disconnected
+  private pendingUpdates: Uint8Array[] = [];
+  private maxPendingUpdates: number = 100;
+
   constructor(doc: Y.Doc, supabase: SupabaseClient<any>, channelName: string) {
     this.doc = doc;
     this.supabase = supabase;
     this.channelName = channelName;
     this.awareness = new awarenessProtocol.Awareness(doc);
 
-    logger.log('📺 SimpleProvider: Creating channel:', channelName);
+    logger.log('SimpleProvider: Creating channel:', channelName);
   }
 
   // Implement Provider interface methods for compatibility with createBinding
@@ -49,18 +63,27 @@ export class SimpleSupabaseProvider {
   }
 
   connect(): void {
-    // Don't reconnect if already connected
-    if (this.connected && this.channel) {
-      logger.log('✅ SimpleProvider: Already connected, skipping');
+    // Don't reconnect if already connected or destroyed
+    if (this.isDestroyed) {
+      logger.log('SimpleProvider: Destroyed, not connecting');
       return;
     }
 
-    logger.log('🔌 SimpleProvider: Connecting...');
+    if (this.connected && this.channel) {
+      logger.log('SimpleProvider: Already connected, skipping');
+      return;
+    }
+
+    logger.log('SimpleProvider: Connecting...');
 
     // Cleanup old channel if exists
     if (this.channel) {
-      logger.log('🧹 Cleaning up old channel...');
-      this.channel.unsubscribe();
+      logger.log('SimpleProvider: Cleaning up old channel...');
+      try {
+        this.channel.unsubscribe();
+      } catch {
+        // Ignore cleanup errors
+      }
       this.channel = null;
     }
 
@@ -68,8 +91,8 @@ export class SimpleSupabaseProvider {
     this.channel = this.supabase.channel(this.channelName, {
       config: {
         broadcast: {
-          self: true, // Receive our own messages for debugging
-          ack: false, // Don't wait for acknowledgments
+          self: true,
+          ack: false,
         },
       },
     });
@@ -77,25 +100,21 @@ export class SimpleSupabaseProvider {
     // Listen for document updates from other clients
     this.channel.on('broadcast', { event: 'doc-update' }, ({ payload }: any) => {
       try {
-        logger.log('📥 SimpleProvider: Received doc update', payload.update.length, 'bytes');
+        logger.log('SimpleProvider: Received doc update', payload.update.length, 'bytes');
         const update = new Uint8Array(payload.update);
         Y.applyUpdate(this.doc, update, this);
-        logger.log('✅ Applied update to local doc');
       } catch (error) {
-        logger.error('❌ SimpleProvider: Failed to apply doc update', error);
+        logger.error('SimpleProvider: Failed to apply doc update', error);
       }
     });
 
     // Listen for sync requests from new clients
     this.channel.on('broadcast', { event: 'sync-request' }, ({ payload }: any) => {
       try {
-        // Don't respond to our own sync request
         if (payload.clientId === this.doc.clientID) return;
 
-        logger.log('📥 SimpleProvider: Received sync request from', payload.clientId);
-        // Send our full state to the requesting client
+        logger.log('SimpleProvider: Received sync request from', payload.clientId);
         const state = Y.encodeStateAsUpdate(this.doc);
-        logger.log('📤 SimpleProvider: Sending full state', state.length, 'bytes');
         this.channel.send({
           type: 'broadcast',
           event: 'sync-response',
@@ -105,142 +124,210 @@ export class SimpleSupabaseProvider {
           }
         });
       } catch (error) {
-        logger.error('❌ SimpleProvider: Failed to handle sync request', error);
+        logger.error('SimpleProvider: Failed to handle sync request', error);
       }
     });
 
     // Listen for sync responses
     this.channel.on('broadcast', { event: 'sync-response' }, ({ payload }: any) => {
       try {
-        // Only apply if this response is for us
         if (payload.targetClientId !== this.doc.clientID) return;
 
-        logger.log('📥 SimpleProvider: Received sync response', payload.update.length, 'bytes');
+        logger.log('SimpleProvider: Received sync response', payload.update.length, 'bytes');
         const update = new Uint8Array(payload.update);
         Y.applyUpdate(this.doc, update, this);
-        logger.log('✅ Applied full state sync');
       } catch (error) {
-        logger.error('❌ SimpleProvider: Failed to apply sync response', error);
+        logger.error('SimpleProvider: Failed to apply sync response', error);
       }
     });
 
     // Listen for awareness updates (cursors, presence)
     this.channel.on('broadcast', { event: 'awareness' }, ({ payload }: any) => {
       try {
-        logger.log('📥 SimpleProvider: Received awareness update');
         const update = new Uint8Array(payload.update);
         awarenessProtocol.applyAwarenessUpdate(this.awareness, update, this);
       } catch (error) {
-        logger.error('❌ SimpleProvider: Failed to apply awareness update', error);
+        logger.error('SimpleProvider: Failed to apply awareness update', error);
       }
     });
 
     // Subscribe to channel
     this.channel.subscribe((status: string) => {
       try {
-        logger.log('📡 SimpleProvider: Status:', status);
+        logger.log('SimpleProvider: Status:', status);
 
         if (status === 'SUBSCRIBED') {
           this.connected = true;
-          logger.log('✅ SimpleProvider: Connected!');
+          this.reconnectAttempts = 0; // Reset on successful connection
+          logger.log('SimpleProvider: Connected!');
 
-          // Emit status event for compatibility
           this.emit('status', { status: 'connected' });
-
-          // Set up local update broadcasting
           this.setupLocalBroadcasting();
 
-          // Request sync from other clients to get their state
-          logger.log('📤 SimpleProvider: Requesting sync from other clients');
+          // Request sync from other clients
           this.channel.send({
             type: 'broadcast',
             event: 'sync-request',
             payload: { clientId: this.doc.clientID }
           });
-        } else if (status === 'CHANNEL_ERROR') {
-          logger.error('❌ SimpleProvider: Channel error');
+
+          // Flush any pending updates
+          this.flushPendingUpdates();
+
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          logger.error('SimpleProvider:', status);
           this.connected = false;
           this.emit('status', { status: 'disconnected' });
-        } else if (status === 'TIMED_OUT') {
-          logger.error('❌ SimpleProvider: Timeout');
+
+          // Auto-reconnect
+          this.scheduleReconnect();
+
+        } else if (status === 'CLOSED') {
           this.connected = false;
           this.emit('status', { status: 'disconnected' });
+
+          // Auto-reconnect if not intentionally destroyed
+          if (!this.isDestroyed) {
+            this.scheduleReconnect();
+          }
         }
       } catch (error) {
-        logger.error('❌ SimpleProvider: Error in subscription handler', error);
+        logger.error('SimpleProvider: Error in subscription handler', error);
         this.connected = false;
         this.emit('status', { status: 'disconnected' });
+        this.scheduleReconnect();
       }
     });
   }
 
-  private setupLocalBroadcasting(): void {
-    // Only set up once
-    if (this.broadcastingSetup) {
-      logger.log('⏭️  Broadcasting already set up, skipping');
+  private scheduleReconnect(): void {
+    if (this.isDestroyed) return;
+    if (this.reconnectTimer) return; // Already scheduled
+    if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      logger.error('SimpleProvider: Max reconnect attempts reached');
+      this.emit('status', { status: 'failed' });
       return;
     }
 
-    logger.log('📡 Setting up local broadcasting...');
+    // Exponential backoff
+    const delay = Math.min(
+      INITIAL_RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts),
+      MAX_RECONNECT_DELAY
+    );
+
+    this.reconnectAttempts++;
+    logger.log(`SimpleProvider: Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.isDestroyed) {
+        this.connect();
+      }
+    }, delay);
+  }
+
+  private flushPendingUpdates(): void {
+    if (this.pendingUpdates.length === 0) return;
+
+    logger.log(`SimpleProvider: Flushing ${this.pendingUpdates.length} pending updates`);
+
+    for (const update of this.pendingUpdates) {
+      try {
+        this.channel.send({
+          type: 'broadcast',
+          event: 'doc-update',
+          payload: { update: Array.from(update) }
+        });
+      } catch (error) {
+        logger.error('SimpleProvider: Failed to flush update', error);
+      }
+    }
+
+    this.pendingUpdates = [];
+  }
+
+  private setupLocalBroadcasting(): void {
+    if (this.broadcastingSetup) return;
+
+    logger.log('SimpleProvider: Setting up local broadcasting...');
     this.broadcastingSetup = true;
 
     // Broadcast local document changes
     this.doc.on('update', (update: Uint8Array, origin: any) => {
-      logger.log('📝 SimpleProvider: Doc update detected!');
-      logger.log('   Origin:', origin?.constructor?.name || origin);
-      logger.log('   Origin === this?', origin === this);
-      logger.log('   Connected?', this.connected);
-      logger.log('   Update size:', update.length, 'bytes');
-
-      // Don't broadcast updates that came from remote (would create loop)
-      // But DO broadcast updates from local editing (CodeMirror/yCollab)
-      if (origin === this) {
-        logger.log('⏸️  Skipping broadcast - origin is this provider (came from remote)');
-        return;
-      }
+      // Don't broadcast updates that came from remote
+      if (origin === this) return;
 
       if (!this.connected) {
-        logger.log('⏸️  Skipping broadcast - not connected');
+        // Queue for later if disconnected
+        if (this.pendingUpdates.length < this.maxPendingUpdates) {
+          this.pendingUpdates.push(update);
+          logger.log('SimpleProvider: Queued update (disconnected)');
+        } else {
+          logger.warn('SimpleProvider: Pending queue full, dropping update');
+        }
         return;
       }
 
-      logger.log('📤 SimpleProvider: Broadcasting doc update:', update.length, 'bytes');
-      const result = this.channel.send({
-        type: 'broadcast',
-        event: 'doc-update',
-        payload: { update: Array.from(update) }
-      });
-      logger.log('📤 Broadcast result:', result);
+      try {
+        this.channel.send({
+          type: 'broadcast',
+          event: 'doc-update',
+          payload: { update: Array.from(update) }
+        });
+      } catch (error) {
+        // Queue on send failure
+        if (this.pendingUpdates.length < this.maxPendingUpdates) {
+          this.pendingUpdates.push(update);
+        }
+        logger.error('SimpleProvider: Failed to broadcast, queued', error);
+      }
     });
 
     // Broadcast local awareness changes
     this.awareness.on('update', ({ added, updated, removed }: any) => {
       if (!this.connected) return;
 
-      const changedClients = added.concat(updated).concat(removed);
-      const update = awarenessProtocol.encodeAwarenessUpdate(this.awareness, changedClients);
+      try {
+        const changedClients = added.concat(updated).concat(removed);
+        const update = awarenessProtocol.encodeAwarenessUpdate(this.awareness, changedClients);
 
-      logger.log('📤 SimpleProvider: Broadcasting awareness');
-      this.channel.send({
-        type: 'broadcast',
-        event: 'awareness',
-        payload: { update: Array.from(update) }
-      });
+        this.channel.send({
+          type: 'broadcast',
+          event: 'awareness',
+          payload: { update: Array.from(update) }
+        });
+      } catch {
+        // Awareness updates are less critical, don't queue
+      }
     });
   }
 
   disconnect(): void {
-    logger.log('🔌 SimpleProvider: Disconnecting...');
-    if (this.channel) {
-      this.channel.unsubscribe();
+    logger.log('SimpleProvider: Disconnecting...');
+
+    // Cancel pending reconnect
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
+
+    if (this.channel) {
+      try {
+        this.channel.unsubscribe();
+      } catch {
+        // Ignore
+      }
+    }
+
     this.connected = false;
     this.emit('status', { status: 'disconnected' });
   }
 
   destroy(): void {
-    logger.log('🗑️  SimpleProvider: Destroying...');
+    logger.log('SimpleProvider: Destroying...');
+    this.isDestroyed = true;
     this.disconnect();
     this.awareness.destroy();
+    this.pendingUpdates = [];
   }
 }
