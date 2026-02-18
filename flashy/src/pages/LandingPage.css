@@ -1,0 +1,190 @@
+.landing-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f1e6ff 0%, #fbf9fc 50%, #f5f0ff 100%);
+  padding: 24px;
+}
+
+.landing-content {
+  max-width: 480px;
+  width: 100%;
+  text-align: center;
+}
+
+.landing-header {
+  margin-bottom: 48px;
+}
+
+.landing-header h1 {
+  font-size: 48px;
+  font-weight: 800;
+  color: #1f2937;
+  margin: 16px 0 8px 0;
+}
+
+.landing-tagline {
+  font-size: 18px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.landing-actions {
+  background: white;
+  border-radius: 20px;
+  padding: 32px;
+  box-shadow: 0 4px 24px rgba(179, 153, 212, 0.15);
+  margin-bottom: 32px;
+}
+
+.landing-create-btn {
+  width: 100%;
+  padding: 16px 24px;
+  font-size: 18px;
+  font-weight: 600;
+  color: white;
+  background: linear-gradient(135deg, #B399D4 0%, #9b7ec4 100%);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(179, 153, 212, 0.3);
+}
+
+.landing-create-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(179, 153, 212, 0.4);
+}
+
+.landing-create-btn:active {
+  transform: translateY(0);
+}
+
+.landing-divider {
+  display: flex;
+  align-items: center;
+  margin: 24px 0;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.landing-divider::before,
+.landing-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.landing-divider span {
+  padding: 0 16px;
+}
+
+.landing-join-form {
+  width: 100%;
+}
+
+.landing-join-input-wrapper {
+  display: flex;
+  align-items: center;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 4px 4px 4px 16px;
+  transition: border-color 0.2s;
+}
+
+.landing-join-input-wrapper:focus-within {
+  border-color: #B399D4;
+}
+
+.landing-join-icon {
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.landing-join-input {
+  flex: 1;
+  padding: 12px;
+  font-size: 16px;
+  border: none;
+  background: transparent;
+  outline: none;
+}
+
+.landing-join-input::placeholder {
+  color: #9ca3af;
+}
+
+.landing-join-btn {
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 8px;
+  background: #B399D4;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.landing-join-btn:hover:not(:disabled) {
+  background: #9b7ec4;
+}
+
+.landing-join-btn:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+}
+
+.landing-error {
+  color: #dc2626;
+  font-size: 14px;
+  margin: 8px 0 0 0;
+  text-align: left;
+}
+
+.landing-features {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.landing-feature {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.feature-icon {
+  font-size: 18px;
+}
+
+.landing-footer {
+  color: #9ca3af;
+  font-size: 14px;
+  margin: 0;
+}
+
+@media (max-width: 480px) {
+  .landing-header h1 {
+    font-size: 36px;
+  }
+
+  .landing-features {
+    flex-direction: column;
+    gap: 12px;
+  }
+}

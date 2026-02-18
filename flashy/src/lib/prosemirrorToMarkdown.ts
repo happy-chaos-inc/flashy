@@ -1,10 +1,23 @@
 import * as Y from 'yjs';
+import { logger } from './logger';
 
 /**
  * Converts Y.XmlFragment (ProseMirror) to markdown string
  * This is a simplified converter for basic markdown elements
  */
 export function prosemirrorToMarkdown(fragment: Y.XmlFragment): string {
+  // Safety check: ensure fragment is attached to a document
+  try {
+    // This will throw "Invalid access" if fragment isn't properly initialized
+    if (!fragment.doc) {
+      logger.warn('prosemirrorToMarkdown: Fragment not attached to document');
+      return '';
+    }
+  } catch (e) {
+    logger.warn('prosemirrorToMarkdown: Cannot access fragment:', e);
+    return '';
+  }
+
   const lines: string[] = [];
 
   function processNode(node: Y.XmlElement | Y.XmlText, indent = 0): void {
@@ -136,22 +149,27 @@ export function prosemirrorToMarkdown(fragment: Y.XmlFragment): string {
   }
 
   // Process all top-level nodes
-  let previousWasList = false;
-  fragment.forEach((child, index) => {
-    if (child instanceof Y.XmlElement || child instanceof Y.XmlText) {
-      const currentIsList = child instanceof Y.XmlElement &&
-                           (child.nodeName === 'bulletList' || child.nodeName === 'orderedList');
+  try {
+    let previousWasList = false;
+    fragment.forEach((child, index) => {
+      if (child instanceof Y.XmlElement || child instanceof Y.XmlText) {
+        const currentIsList = child instanceof Y.XmlElement &&
+                             (child.nodeName === 'bulletList' || child.nodeName === 'orderedList');
 
-      // Add extra newline after list if next element is not a list
-      if (index > 0 && previousWasList && !currentIsList) {
-        // Previous was a list, current is not - no extra line needed
-        // Lists already handle their own spacing
+        // Add extra newline after list if next element is not a list
+        if (index > 0 && previousWasList && !currentIsList) {
+          // Previous was a list, current is not - no extra line needed
+          // Lists already handle their own spacing
+        }
+
+        processNode(child);
+        previousWasList = currentIsList;
       }
-
-      processNode(child);
-      previousWasList = currentIsList;
-    }
-  });
+    });
+  } catch (e) {
+    console.warn('prosemirrorToMarkdown: Error during iteration (document may be mid-transaction):', e);
+    return '';
+  }
 
   return lines.join('\n');
 }

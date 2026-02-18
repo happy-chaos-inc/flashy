@@ -1,30 +1,44 @@
 import { useState, FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from '../components/Logo';
 import './AuthPages.css';
 
-export function LoginPage() {
+interface LoginPageProps {
+  redirectTo?: string;
+}
+
+export function LoginPage({ redirectTo }: LoginPageProps) {
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const { login } = useAuth();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!username.trim()) {
+    const trimmedName = username.trim();
+    if (!trimmedName) {
       setError('Please enter your name');
       return;
     }
 
-    const success = login(password, username.trim());
-
-    if (!success) {
-      setError('Incorrect password');
-      setPassword('');
+    if (trimmedName.length < 2) {
+      setError('Name must be at least 2 characters');
+      return;
     }
-    // No reload on login - auth state change handles navigation
+
+    if (trimmedName.length > 20) {
+      setError('Name must be 20 characters or less');
+      return;
+    }
+
+    login(trimmedName);
+
+    if (redirectTo) {
+      navigate(redirectTo);
+    }
   };
 
   return (
@@ -35,27 +49,22 @@ export function LoginPage() {
           <h1>Flashy</h1>
         </div>
 
+        <p className="auth-subtitle">Enter your name to join</p>
+
         <form onSubmit={handleSubmit} className="auth-form">
           <input
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="Name"
+            placeholder="Your name"
             required
             autoFocus
-          />
-
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            required
+            maxLength={20}
           />
 
           {error && <div className="error-message">{error}</div>}
 
-          <button type="submit">Enter</button>
+          <button type="submit">Join</button>
         </form>
       </div>
     </div>

@@ -1,7 +1,7 @@
 // Generate consistent colors for collaborative editing
 // RGB values: green(72,229,82), cyan(72,205,229), orange(253,187,93),
 // blue(93,141,253), red(253,93,93), purple(191,130,232), pink(232,130,166)
-const USER_COLORS = [
+export const USER_COLORS = [
   '#4ebf56', // Green (78, 191, 86)
   '#41bbd1', // Cyan (65, 187, 209)
   '#FDBB5D', // Orange (253, 187, 93)
@@ -19,15 +19,25 @@ export function generateUserInfo() {
     sessionStorage.setItem('flashy_user_id', userId);
   }
 
-  // Assign color based on user ID hash
-  const colorIndex = Math.abs(hashCode(userId)) % USER_COLORS.length;
-  const color = USER_COLORS[colorIndex];
+  // Check if user already has a saved color
+  let color = sessionStorage.getItem('flashy_user_color');
+  if (!color) {
+    // Assign a random color from the palette
+    const randomIndex = Math.floor(Math.random() * USER_COLORS.length);
+    color = USER_COLORS[randomIndex];
+    sessionStorage.setItem('flashy_user_color', color);
+  }
 
   // Use the username from login, or fallback to anonymous name
   const username = sessionStorage.getItem('flashy_username');
   const name = username || `User ${Math.abs(hashCode(userId)) % 100}`;
 
   return { userId, color, name };
+}
+
+// Update user's color and save to session
+export function setUserColor(color: string) {
+  sessionStorage.setItem('flashy_user_color', color);
 }
 
 // Simple hash function for consistent color assignment

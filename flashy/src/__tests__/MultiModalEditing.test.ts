@@ -36,9 +36,10 @@ describe('Multi-Modal Editing Tests', () => {
 
       expect(fragment.length).toBe(3);
       expect(fragment.get(0).nodeName).toBe('heading');
-      expect(fragment.get(0).getAttribute('level')).toBe('1');
-      expect(fragment.get(1).getAttribute('level')).toBe('2');
-      expect(fragment.get(2).getAttribute('level')).toBe('3');
+      // Levels are stored as numbers (not strings) for TipTap compatibility
+      expect(fragment.get(0).getAttribute('level')).toBe(1);
+      expect(fragment.get(1).getAttribute('level')).toBe(2);
+      expect(fragment.get(2).getAttribute('level')).toBe(3);
 
       doc.destroy();
     });

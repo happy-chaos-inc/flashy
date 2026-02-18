@@ -68,6 +68,27 @@
   gap: 8px;
 }
 
+.share-button {
+  padding: 8px 12px;
+  background: #F5E1FD;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #9b7ec4;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.share-button:hover {
+  background: #edd5fc;
+  color: #8B6BB8;
+}
+
 .lock-button {
   padding: 8px;
   background: none;
@@ -89,13 +110,21 @@
 }
 
 .editor-content {
-  margin: var(--margin-left) calc(var(--sidebar-width) + var(--margin-left) + var(--margin-gap)) var(--margin-left) var(--margin-left);
+  /* Three-panel layout: left sidebar + editor + right sidebar */
+  margin: var(--margin-left) calc(var(--right-sidebar-width) + var(--margin-left) + var(--margin-gap)) var(--margin-left) calc(var(--left-sidebar-width) + var(--margin-left) + var(--margin-gap));
   display: flex;
   flex-direction: column;
   min-width: var(--min-panel-width);
-  min-height: calc(100vh - var(--content-start) - 24px);
+  height: calc(100vh - var(--content-start) - 24px);
   position: relative;
   z-index: 10;
+}
+
+.mode-selector-overlay {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 100;
 }
 
 .editor-content.animating {
@@ -201,11 +230,11 @@
 }
 
 .flashcard-sidebar {
-  width: var(--sidebar-width);
+  width: var(--left-sidebar-width);
   min-width: var(--min-panel-width);
   height: calc(100vh - var(--content-start) - 24px);
   background: white;
-  border-left: 1px solid #e5e7eb;
+  border-right: 1px solid #e5e7eb;
   overflow-y: auto;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -214,13 +243,13 @@
   scrollbar-color: #B399D4 #f0f0f0;
   position: fixed;
   top: var(--content-start);
-  right: var(--margin-left);
+  left: var(--margin-left);
   z-index: 100;
   box-sizing: border-box;
 }
 
 .flashcard-sidebar.animating {
-  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.4s ease;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1), left 0.5s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.4s ease;
 }
 
 .flashcard-sidebar.study-mode-active {
@@ -387,32 +416,59 @@
 }
 
 .flashcard-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0px 24px 12px 24px;
+  padding: 8px 12px;
+  cursor: pointer;
   font-size: 14px;
   font-weight: 700;
   color: #B399D4;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin: 0px 24px 12px 24px;
-  padding: 8px 0;
-  cursor: pointer;
+  border: 2px solid transparent;
+  border-bottom: 2px solid #B399D4;
+  border-radius: 8px 8px 0 0;
+  transition: all 0.2s ease;
+}
+
+.flashcard-section:hover {
+  background-color: rgba(179, 153, 212, 0.15);
+}
+
+.flashcard-section.selected {
+  background-color: rgba(179, 153, 212, 0.25);
+  border-color: #B399D4;
+  border-radius: 8px;
+}
+
+.section-card-count {
+  background: #B399D4;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  min-width: 20px;
+  height: 24px;
+  padding: 0 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  position: relative;
-  border-bottom: 2px solid #B399D4;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: auto;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
 }
 
-.section-collapse-icon {
-  position: absolute;
-  left: 0;
-  display: flex;
-  align-items: center;
-  transition: transform 0.2s ease;
+.section-card-count:hover {
+  background: #9a7bc0;
+  transform: scale(1.05);
 }
 
-:hover .section-collapse-icon {
-  transform: scale(1.2);
+.section-card-count:active {
+  transform: scale(0.95);
 }
 
 .section-name {
@@ -420,42 +476,16 @@
   white-space: nowrap;
 }
 
-.section-badge {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  background: #B399D4;
-  color: white;
-  border-radius: 6px;
-  min-width: 14px;
-  height: 18px;
-  padding: 0 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 600;
-}
-
 .section-starred {
-  position: absolute;
-  right: 32px;
-  top: 50%;
-  transform: translateY(-50%);
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 2px;
+  color: #F59E0B;
+  font-size: 12px;
 }
 
 .section-starred-count {
-  position: absolute;
-  color: white;
-  font-size: 10px;
-  font-weight: 700;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  font-weight: 600;
 }
 
 .flashcard-list {
@@ -926,6 +956,78 @@
   text-align: center;
 }
 
+/* Chat Sidebar - Right side */
+.chat-sidebar {
+  width: var(--right-sidebar-width);
+  min-width: var(--min-panel-width);
+  height: calc(100vh - var(--content-start) - 24px);
+  background: white;
+  border-left: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  position: fixed;
+  top: var(--content-start);
+  right: var(--margin-left);
+  z-index: 100;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-sidebar.animating {
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.4s ease;
+}
+
+/* Left resize handle for flashcard sidebar */
+.resize-handle-left {
+  width: 48px;
+  background: transparent;
+  cursor: ew-resize;
+  position: fixed;
+  top: var(--content-start);
+  height: calc(100vh - var(--content-start) - 24px);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 101;
+  overflow: visible;
+}
+
+.resize-handle-left.animating {
+  transition: left 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.resize-handle-left:hover:not(:has(.resize-toggle-button:hover)) .resize-stick {
+  background: linear-gradient(to bottom, transparent, #B399D4 20%, #B399D4 80%, transparent);
+  transform: scaleX(2);
+}
+
+/* Right resize handle for chat sidebar */
+.resize-handle-right {
+  width: 48px;
+  background: transparent;
+  cursor: ew-resize;
+  position: fixed;
+  top: var(--content-start);
+  height: calc(100vh - var(--content-start) - 24px);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 101;
+  overflow: visible;
+}
+
+.resize-handle-right.animating {
+  transition: right 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.resize-handle-right:hover:not(:has(.resize-toggle-button:hover)) .resize-stick {
+  background: linear-gradient(to bottom, transparent, #B399D4 20%, #B399D4 80%, transparent);
+  transform: scaleX(2);
+}
+
 @media (max-width: 768px) {
   .editor-container {
     flex-direction: column;
@@ -936,7 +1038,26 @@
     margin: 0 24px 24px 24px;
   }
 
+  .chat-sidebar {
+    width: 100%;
+    margin: 0 24px 24px 24px;
+  }
+
   .editor-content {
     margin: 24px;
   }
+}
+
+/* Editor panel switching - keep both mounted for instant switching */
+.editor-panel {
+  width: 100%;
+  height: 100%;
+}
+
+.editor-panel.active {
+  display: block;
+}
+
+.editor-panel.hidden {
+  display: none;
 }
