@@ -5,7 +5,7 @@
   flex-direction: column;
   background: white;
   border-radius: 12px;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   border: 1px solid #e5e7eb;
 }
@@ -22,6 +22,17 @@
   background: linear-gradient(to bottom, #fbfbfb, #f9f9fc);
   border-bottom: none;
   flex-shrink: 0;
+  /* Auto-hide behavior */
+  position: sticky;
+  top: 0;
+  z-index: 1; /* Low z-index so cursor labels can appear above */
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.breadcrumb.hidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .breadcrumb-item {
@@ -52,6 +63,8 @@
   line-height: 1.6;
   background: rgba(255, 255, 255, 0.8);
   scrollbar-color: #B399D4 #f0f0f0;
+  position: relative;
+  z-index: 2; /* Higher than breadcrumb so cursor labels appear above */
 }
 
 .markdown-editor::-webkit-scrollbar {
@@ -80,9 +93,24 @@
   background: rgba(255, 255, 255, 0.8) !important;
 }
 
+/* Dynamic cursor color using CSS custom properties */
+.markdown-editor .cm-cursor,
+.markdown-editor .cm-dropCursor {
+  border-left-color: var(--user-cursor-color, #4ebf56) !important;
+  border-left-width: 2px !important;
+}
+
+.markdown-editor .cm-selectionBackground {
+  background-color: var(--user-selection-color, rgba(78, 191, 86, 0.25)) !important;
+}
+
+.markdown-editor .cm-content {
+  cursor: var(--user-cursor-url, auto), text;
+}
+
 .markdown-editor .cm-scroller {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-  padding: 0 24px 0 0;
+  padding: 24px 24px 0 0; /* Top padding for cursor labels */
   background-color: rgba(255, 255, 255, 0.8) !important;
   scroll-behavior: smooth;
 }
@@ -231,7 +259,7 @@
   white-space: nowrap;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
-  z-index: 1000;
+  z-index: 10000;
   pointer-events: none;
   opacity: 1;  /* Always show labels */
   transition: opacity 0.2s ease;
@@ -283,4 +311,34 @@
   100% {
     background-color: transparent;
   }
+}
+
+/* Remote collaborative cursors */
+.cm-remote-cursor {
+  position: relative;
+  pointer-events: none;
+}
+
+.cm-remote-cursor-label {
+  animation: cursor-fade-in 0.2s ease-out;
+}
+
+@keyframes cursor-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Ensure cursor labels don't get clipped */
+.cm-line {
+  overflow: visible !important;
+}
+
+.cm-content {
+  overflow: visible !important;
 }

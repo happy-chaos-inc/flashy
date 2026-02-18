@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { collaborationManager } from '../../lib/CollaborationManager';
 import { getCursorDataUrl, getCursorSvg } from '../../config/cursorSvg';
+import { logger } from '../../lib/logger';
 import './MouseCursors.css';
 
 interface CursorData {
@@ -23,19 +24,27 @@ export function MouseCursors() {
         const localClientId = ydoc.clientID;
 
         // Get local user's color for CSS cursor - single source of truth from CollaborationManager
-        const color = userInfo.color;
-
-        // Get cursor URL from centralized config
-        const cursorUrl = getCursorDataUrl(color);
+        const initialColor = userInfo.color;
 
         // Inject CSS with !important to override CodeMirror
         const style = document.createElement('style');
-        style.textContent = `
-          body, body * {
-            cursor: url("${cursorUrl}") 0 0, auto !important;
-          }
-        `;
+        style.id = 'flashy-cursor-style';
+
+        const updateCursorStyle = (color: string) => {
+          const cursorUrl = getCursorDataUrl(color);
+          style.textContent = `
+            body, body * {
+              cursor: url("${cursorUrl}") 0 0, auto !important;
+            }
+          `;
+          logger.log('🎨 MouseCursors: Updated global cursor to:', color);
+        };
+
+        updateCursorStyle(initialColor);
         document.head.appendChild(style);
+
+        // Listen for color changes
+        const unsubscribeColorChange = collaborationManager.onColorChange(updateCursorStyle);
 
         // Throttle mouse updates to reduce lag (update max every 50ms)
         let lastUpdate = 0;
@@ -92,10 +101,12 @@ export function MouseCursors() {
           document.removeEventListener('mousemove', handleMouseMove);
           document.removeEventListener('mouseleave', handleMouseLeave);
           provider.awareness.off('change', updateCursors);
+          unsubscribeColorChange();
+          style.remove();
           collaborationManager.disconnect();
         };
       } catch (error) {
-        console.error('Failed to connect MouseCursors:', error);
+        logger.error('Failed to connect MouseCursors:', error);
       }
     })();
 

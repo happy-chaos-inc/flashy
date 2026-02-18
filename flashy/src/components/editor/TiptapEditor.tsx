@@ -1,14 +1,47 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import Heading from '@tiptap/extension-heading';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import Placeholder from '@tiptap/extension-placeholder';
 import { Extension } from '@tiptap/core';
 import { useEffect, useState } from 'react';
 import { collaborationManager } from '../../lib/CollaborationManager';
+import { logger } from '../../lib/logger';
 import { Bold, Italic, List, ListOrdered, Code, Heading1, Heading2 } from 'lucide-react';
 import './TiptapEditor.css';
 import * as Y from 'yjs';
+
+// Custom Heading extension that handles string levels from y-prosemirror
+// y-prosemirror passes attributes as-is from Y.XmlElement, so "2" (string) needs to work
+const CustomHeading = Heading.extend({
+  addAttributes() {
+    return {
+      level: {
+        default: 1,
+        parseHTML: element => {
+          const level = element.getAttribute('level');
+          return level ? parseInt(level, 10) : parseInt(element.tagName.replace('H', ''), 10);
+        },
+        renderHTML: attributes => {
+          // Normalize level to number for rendering
+          const level = typeof attributes.level === 'string'
+            ? parseInt(attributes.level, 10)
+            : attributes.level;
+          return { 'data-level': level };
+        },
+      },
+    };
+  },
+  // Override renderHTML to use normalized level for the HTML tag
+  renderHTML({ node, HTMLAttributes }) {
+    const level = typeof node.attrs.level === 'string'
+      ? parseInt(node.attrs.level, 10)
+      : node.attrs.level;
+    const validLevel = [1, 2, 3, 4, 5, 6].includes(level) ? level : 1;
+    return [`h${validLevel}`, HTMLAttributes, 0];
+  },
+});
 
 // Custom extension for Tab key handling (LISTS ONLY)
 // Rationale: Markdown can't represent paragraph indentation,
@@ -39,6 +72,11 @@ const TabIndentation = Extension.create({
   },
 });
 
+interface TiptapEditorProps {
+  scrollTarget?: { position: number; timestamp: number } | null;
+  isActive?: boolean; // Whether this editor is currently visible
+}
+
 /**
  * TiptapEditor - WYSIWYG editor bound directly to Y.XmlFragment
  *
@@ -47,7 +85,7 @@ const TabIndentation = Extension.create({
  * - Tiptap's Collaboration extension binds directly to Y.XmlFragment
  * - No sync needed - works natively with the canonical data structure
  */
-export function TiptapEditor() {
+export function TiptapEditor({ scrollTarget, isActive = true }: TiptapEditorProps) {
   const [isReady, setIsReady] = useState(false);
   const [ydoc, setYdoc] = useState<Y.Doc | null>(null);
   const [provider, setProvider] = useState<any>(null);
@@ -57,13 +95,13 @@ export function TiptapEditor() {
       try {
         const { ydoc, provider } = await collaborationManager.connect();
 
-        console.log('📊 TiptapEditor: Connected to Y.XmlFragment');
+        logger.log('📊 TiptapEditor: Connected to Y.XmlFragment');
 
         setYdoc(ydoc);
         setProvider(provider);
         setIsReady(true);
       } catch (error) {
-        console.error('Failed to initialize Tiptap editor:', error);
+        logger.error('Failed to initialize Tiptap editor:', error);
       }
     };
 
@@ -79,6 +117,10 @@ export function TiptapEditor() {
       extensions: [
         StarterKit.configure({
           history: false, // Disable local history (use Y.js undo/redo)
+          heading: false, // Disable default heading, use CustomHeading instead
+        }),
+        CustomHeading.configure({
+          levels: [1, 2, 3, 4, 5, 6],
         }),
         Placeholder.configure({
           placeholder: 'Start typing to create your first flashcard... (Use ## for headings)',
@@ -108,6 +150,119 @@ export function TiptapEditor() {
     },
     [ydoc, provider, isReady]
   );
+
+  // Broadcast cursor position to awareness (for click-to-scroll feature)
+  useEffect(() => {
+    if (!editor || !provider) return;
+
+    const updateCursorPosition = () => {
+      const pos = editor.state.selection.anchor;
+      provider.awareness.setLocalStateField('cursorPosition', pos);
+    };
+
+    // Update on selection change
+    editor.on('selectionUpdate', updateCursorPosition);
+    // Initial broadcast
+    updateCursorPosition();
+
+    return () => {
+      editor.off('selectionUpdate', updateCursorPosition);
+    };
+  }, [editor, provider]);
+
+  // Listen for local color changes and update TipTap cursor
+  useEffect(() => {
+    if (!editor || !provider) return;
+
+    // Function to update mouse cursor
+    const updateMouseCursor = (color: string) => {
+      const editorElement = editor.view.dom as HTMLElement;
+      if (editorElement) {
+        const cursorUrl = `url(data:image/svg+xml;base64,${btoa(`
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" fill="${color}" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        `.trim())}) 0 0, text`;
+        editorElement.style.cursor = cursorUrl;
+        logger.log('🎨 TipTap: Mouse cursor updated to:', color);
+      }
+    };
+
+    // Set initial mouse cursor
+    const initialColor = provider.awareness.getLocalState()?.user?.color;
+    if (initialColor) {
+      updateMouseCursor(initialColor);
+    }
+
+    const unsubscribe = collaborationManager.onColorChange((newColor) => {
+      logger.log('🎨 TipTap: Updating cursor color to:', newColor);
+
+      // Update mouse cursor
+      updateMouseCursor(newColor);
+
+      // Update the user in CollaborationCursor
+      const userName = provider.awareness.getLocalState()?.user?.name || 'Anonymous';
+      try {
+        editor.chain().updateUser({
+          name: userName,
+          color: newColor,
+        }).run();
+      } catch (e) {
+        logger.warn('Could not update TipTap collaborative cursor:', e);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [editor, provider]);
+
+  // Handle scroll to target position (when clicking on another user)
+  useEffect(() => {
+    if (!scrollTarget || !editor) return;
+
+    // TipTap positions are different from CodeMirror, but approximate
+    const docLength = editor.state.doc.content.size;
+    const pos = Math.min(Math.max(1, scrollTarget.position), docLength - 1);
+
+    try {
+      // Set selection first
+      editor.chain()
+        .focus()
+        .setTextSelection(pos)
+        .run();
+
+      // Smooth scroll to the cursor position
+      requestAnimationFrame(() => {
+        const coords = editor.view.coordsAtPos(pos);
+        if (coords) {
+          // Find the closest block element to scroll to
+          const resolvedPos = editor.state.doc.resolve(pos);
+          const domNode = editor.view.nodeDOM(resolvedPos.before(1));
+
+          if (domNode instanceof HTMLElement) {
+            domNode.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center'
+            });
+          } else {
+            // Fallback: scroll the editor container
+            const editorElement = editor.view.dom.closest('.tiptap-editor');
+            if (editorElement) {
+              const editorRect = editorElement.getBoundingClientRect();
+              const targetY = coords.top - editorRect.top + editorElement.scrollTop;
+              const centerOffset = editorElement.clientHeight / 2;
+
+              editorElement.scrollTo({
+                top: targetY - centerOffset,
+                behavior: 'smooth'
+              });
+            }
+          }
+        }
+      });
+    } catch (e) {
+      logger.warn('Could not scroll to position:', e);
+    }
+  }, [scrollTarget, editor]);
 
   if (!isReady) {
     return (

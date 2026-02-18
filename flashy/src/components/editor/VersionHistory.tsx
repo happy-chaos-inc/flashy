@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { History } from 'lucide-react';
 import { supabase } from '../../config/supabase';
+import { logger } from '../../lib/logger';
 import './VersionHistory.css';
 
 interface Version {
@@ -11,9 +12,10 @@ interface Version {
 
 interface VersionHistoryProps {
   onRestore: (version: number) => Promise<void>;
+  roomId: string;
 }
 
-export function VersionHistory({ onRestore }: VersionHistoryProps) {
+export function VersionHistory({ onRestore, roomId }: VersionHistoryProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [versions, setVersions] = useState<Version[]>([]);
   const [loading, setLoading] = useState(false);
@@ -25,10 +27,11 @@ export function VersionHistory({ onRestore }: VersionHistoryProps) {
       // Get all versions from last 7 days
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
+      const documentId = `room-${roomId}`;
       const { data, error } = await supabase
         .from('document_versions')
         .select('version, created_at, last_edited_by')
-        .eq('document_id', 'main-document')
+        .eq('document_id', documentId)
         .gte('created_at', sevenDaysAgo)
         .order('created_at', { ascending: false })
         .limit(50); // Show up to 50 snapshots
@@ -38,11 +41,11 @@ export function VersionHistory({ onRestore }: VersionHistoryProps) {
       // Show all snapshots (no daily grouping)
       setVersions(data || []);
     } catch (error) {
-      console.error('❌ Error loading versions:', error);
+      logger.error('❌ Error loading versions:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [roomId]);
 
   useEffect(() => {
     if (isOpen) {
@@ -62,7 +65,7 @@ export function VersionHistory({ onRestore }: VersionHistoryProps) {
       setConfirmRestore(null);
       setIsOpen(false);
     } catch (error) {
-      console.error('❌ Restore failed:', error);
+      logger.error('❌ Restore failed:', error);
       alert('Restore failed. Check console for details.');
     }
   };

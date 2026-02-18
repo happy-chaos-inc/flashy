@@ -3,14 +3,11 @@ import { useState, useEffect, createContext, useContext } from 'react';
 interface AuthContextType {
   isAuthenticated: boolean;
   username: string | null;
-  login: (password: string, username: string) => boolean;
+  login: (username: string) => void;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// The shared password - stored in environment variable
-const SHARED_PASSWORD = process.env.REACT_APP_SHARED_PASSWORD || 'flashy123';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -29,16 +26,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const login = (password: string, username: string): boolean => {
-    if (password === SHARED_PASSWORD) {
-      setIsAuthenticated(true);
-      setUsername(username);
-      sessionStorage.setItem('flashy_auth', 'true');
-      sessionStorage.setItem('flashy_username', username);
-      sessionStorage.setItem('flashy_user_id', username); // Use username as ID for now
-      return true;
-    }
-    return false;
+  const login = (username: string): void => {
+    setIsAuthenticated(true);
+    setUsername(username);
+    sessionStorage.setItem('flashy_auth', 'true');
+    sessionStorage.setItem('flashy_username', username);
+    sessionStorage.setItem('flashy_user_id', username);
   };
 
   const logout = () => {

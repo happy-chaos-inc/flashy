@@ -23,7 +23,8 @@ export function markdownToProsemirror(markdown: string, fragment: Y.XmlFragment)
       const level = headingMatch[1].length;
       const text = headingMatch[2];
       const heading = new Y.XmlElement('heading');
-      heading.setAttribute('level', level.toString());
+      // Store level as number (not string) to match TipTap/y-prosemirror expectations
+      (heading as any).setAttribute('level', level);
       const textNode = new Y.XmlText(text);
       heading.push([textNode]);
       fragment.push([heading]);

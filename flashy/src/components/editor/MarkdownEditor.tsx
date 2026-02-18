@@ -3,14 +3,21 @@ import { EditorView, basicSetup } from 'codemirror';
 import { EditorState } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
 import { collaborationManager } from '../../lib/CollaborationManager';
+import { logger } from '../../lib/logger';
 import { EditorView as CMEditorView, ViewUpdate, ViewPlugin } from '@codemirror/view';
 import { getCursorDataUrl } from '../../config/cursorSvg';
 import { keymap } from '@codemirror/view';
 import { indentWithTab } from '@codemirror/commands';
 import { prosemirrorToMarkdown } from '../../lib/prosemirrorToMarkdown';
 import { markdownToProsemirror } from '../../lib/markdownToProsemirror';
+import { collaborativeCursors } from '../../lib/codemirrorCursors';
 import * as Y from 'yjs';
 import './MarkdownEditor.css';
+
+interface MarkdownEditorProps {
+  scrollTarget?: { position: number; timestamp: number } | null;
+  isActive?: boolean; // Whether this editor is currently visible
+}
 
 /**
  * MarkdownEditor - A markdown view/lens over Y.XmlFragment
@@ -22,7 +29,7 @@ import './MarkdownEditor.css';
  * - Edit: Parse markdown → update Y.XmlFragment
  * - Loop prevention: Synchronous flag (isRemoteUpdate)
  */
-export function MarkdownEditor() {
+export function MarkdownEditor({ scrollTarget, isActive = true }: MarkdownEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [isReady, setIsReady] = useState(false);
@@ -30,13 +37,17 @@ export function MarkdownEditor() {
   // Loop prevention flag - synchronous, not async
   const isRemoteUpdateRef = useRef(false);
 
+  // Track active state for skipping observer updates when hidden
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
+
   // Debounce timer for markdown → Y.XmlFragment updates
   const updateTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!editorRef.current) return;
 
-    console.log('🎨 MarkdownEditor: Initializing as Y.XmlFragment lens...');
+    logger.log('🎨 MarkdownEditor: Initializing as Y.XmlFragment lens...');
 
     let view: EditorView | null = null;
     let cleanupCalled = false;
@@ -47,14 +58,14 @@ export function MarkdownEditor() {
     (async () => {
       try {
         // Get Yjs doc and provider
-        const { ydoc: doc, userInfo } = await collaborationManager.connect();
+        const { ydoc: doc, provider, userInfo } = await collaborationManager.connect();
         ydoc = doc;
         yXmlFragment = doc.getXmlFragment('prosemirror');
 
         const userColor = userInfo.color;
         const cursorDataUrl = getCursorDataUrl(userColor);
 
-        console.log('📊 Connected to Y.XmlFragment:', {
+        logger.log('📊 Connected to Y.XmlFragment:', {
           clientID: doc.clientID,
           fragmentLength: yXmlFragment.length,
         });
@@ -63,11 +74,11 @@ export function MarkdownEditor() {
         await collaborationManager.waitForDatabaseSync();
         await new Promise(resolve => setTimeout(resolve, 1000));
         setIsReady(true);
-        console.log('✅ Database synced - Editor ready!');
+        logger.log('✅ Database synced - Editor ready!');
 
         // Initial content: Serialize Y.XmlFragment to markdown
         const initialMarkdown = prosemirrorToMarkdown(yXmlFragment);
-        console.log('📄 Initial markdown from Y.XmlFragment:', initialMarkdown.substring(0, 100));
+        logger.log('📄 Initial markdown from Y.XmlFragment:', initialMarkdown.substring(0, 100));
 
         // Plugin to update fold gutter classes
         const foldStatePlugin = ViewPlugin.fromClass(class {
@@ -94,21 +105,32 @@ export function MarkdownEditor() {
           }
         });
 
-        // Custom theme for cursor
-        const cursorTheme = CMEditorView.theme({
-          '.cm-cursor, .cm-dropCursor': {
-            borderLeftColor: userColor,
-            borderLeftWidth: '2px',
-          },
-          '.cm-selectionBackground': {
-            backgroundColor: userColor + '40',
-          },
-          '.cm-content': {
-            cursor: `url(${cursorDataUrl}) 0 0, text`,
-          },
-        });
+        // Set cursor color (can be updated dynamically)
+        const setEditorCursorColor = (color: string) => {
+          logger.log('🎨 setEditorCursorColor called with:', color);
 
-        // Create CodeMirror editor WITHOUT Y.js binding
+          // Set CSS custom properties
+          if (editorRef.current) {
+            editorRef.current.style.setProperty('--user-cursor-color', color);
+            editorRef.current.style.setProperty('--user-selection-color', color + '40');
+          }
+
+          // Also directly style the cursor elements (more reliable)
+          const currentView = viewRef.current;
+          if (currentView) {
+            const cursors = currentView.dom.querySelectorAll('.cm-cursor, .cm-dropCursor');
+            logger.log('🎨 Found cursor elements:', cursors.length);
+            cursors.forEach((cursor: Element) => {
+              (cursor as HTMLElement).style.borderLeftColor = color;
+            });
+
+            // Update mouse cursor
+            currentView.contentDOM.style.cursor = `url(${getCursorDataUrl(color)}) 0 0, text`;
+          }
+        };
+        setEditorCursorColor(userColor);
+
+        // Create CodeMirror editor WITHOUT Y.js binding (but WITH collaborative cursors)
         const state = EditorState.create({
           doc: initialMarkdown,
           extensions: [
@@ -118,7 +140,8 @@ export function MarkdownEditor() {
             // Tab handling: indentWithTab works for lists and code blocks
             // Regular paragraphs don't support indentation (markdown ignores leading spaces)
             keymap.of([indentWithTab]),
-            cursorTheme,
+            // Collaborative cursors - show remote carets
+            collaborativeCursors(provider.awareness),
             // Change handler: Parse markdown and update Y.XmlFragment
             EditorView.updateListener.of((update: ViewUpdate) => {
               if (update.docChanged && !isRemoteUpdateRef.current) {
@@ -133,7 +156,7 @@ export function MarkdownEditor() {
                 updateTimerRef.current = setTimeout(() => {
                   if (!ydoc || !yXmlFragment) return;
 
-                  console.log('📝 Parsing markdown and updating Y.XmlFragment...');
+                  logger.log('📝 Parsing markdown and updating Y.XmlFragment...');
 
                   // Parse markdown to ProseMirror and replace Y.XmlFragment
                   // Use transaction origin to identify this as our own update
@@ -168,11 +191,17 @@ export function MarkdownEditor() {
 
           // Skip if this is our own update (check transaction origin)
           if (transaction.origin === 'markdown-editor') {
-            console.log('🔄 Skipping self-update');
+            logger.log('🔄 Skipping self-update');
             return;
           }
 
-          console.log('🔄 Y.XmlFragment changed (remote), updating markdown view...');
+          // Skip if editor is hidden (not active) - prevents race conditions
+          if (!isActiveRef.current) {
+            logger.log('🔄 Skipping remote update - editor is hidden');
+            return;
+          }
+
+          logger.log('🔄 Y.XmlFragment changed (remote), updating markdown view...');
 
           // Save cursor position
           const cursorPos = view.state.selection.main.head;
@@ -203,16 +232,23 @@ export function MarkdownEditor() {
         // Attach observer to Y.XmlFragment
         yXmlFragment.observeDeep(xmlObserver);
 
-        console.log('✅ MarkdownEditor: Ready as Y.XmlFragment lens!');
+        // Listen for local color changes (direct callback, not via awareness)
+        const unsubscribeColorChange = collaborationManager.onColorChange((newColor) => {
+          logger.log('🎨 MarkdownEditor: Updating cursor color to:', newColor);
+          setEditorCursorColor(newColor);
+        });
+
+        logger.log('✅ MarkdownEditor: Ready as Y.XmlFragment lens!');
 
         // Cleanup function
         return () => {
           if (yXmlFragment) {
             yXmlFragment.unobserveDeep(xmlObserver);
           }
+          unsubscribeColorChange();
         };
       } catch (error: any) {
-        console.error('❌ Failed to initialize editor:', error);
+        logger.error('❌ Failed to initialize editor:', error);
       }
     })();
 
@@ -221,7 +257,7 @@ export function MarkdownEditor() {
       cleanupCalled = true;
 
       setIsReady(false);
-      console.log('🧹 MarkdownEditor: Cleaning up...');
+      logger.log('🧹 MarkdownEditor: Cleaning up...');
 
       if (updateTimerRef.current) {
         clearTimeout(updateTimerRef.current);
@@ -242,13 +278,138 @@ export function MarkdownEditor() {
     if (isReady && viewRef.current) {
       viewRef.current.contentDOM.setAttribute('contenteditable', 'true');
       viewRef.current.contentDOM.style.opacity = '1';
-      console.log('⌨️  Editor enabled - ready for input');
+      logger.log('⌨️  Editor enabled - ready for input');
     }
+  }, [isReady]);
+
+  // Re-sync content when editor becomes active (in case it missed updates while hidden)
+  useEffect(() => {
+    if (!isActive || !isReady || !viewRef.current) return;
+
+    const resync = async () => {
+      try {
+        const { ydoc } = await collaborationManager.connect();
+        const yXmlFragment = ydoc.getXmlFragment('prosemirror');
+
+        const view = viewRef.current;
+        if (!view) return;
+
+        // Serialize Y.XmlFragment to markdown
+        const newMarkdown = prosemirrorToMarkdown(yXmlFragment);
+        const currentContent = view.state.doc.toString();
+
+        // Only update if content has changed
+        if (newMarkdown !== currentContent) {
+          logger.log('🔄 Re-syncing markdown editor after becoming active');
+          isRemoteUpdateRef.current = true;
+
+          const cursorPos = view.state.selection.main.head;
+
+          view.dispatch({
+            changes: {
+              from: 0,
+              to: view.state.doc.length,
+              insert: newMarkdown,
+            },
+          });
+
+          // Restore cursor position
+          const newLength = view.state.doc.length;
+          const restoredPos = Math.min(cursorPos, newLength);
+          view.dispatch({
+            selection: { anchor: restoredPos },
+          });
+
+          isRemoteUpdateRef.current = false;
+        }
+      } catch (error) {
+        logger.warn('Could not re-sync markdown:', error);
+      }
+    };
+
+    resync();
+  }, [isActive, isReady]);
+
+  // Handle scroll to target position (when clicking on another user)
+  useEffect(() => {
+    if (!scrollTarget || !viewRef.current) return;
+
+    const view = viewRef.current;
+    const pos = Math.min(scrollTarget.position, view.state.doc.length);
+
+    // Set selection first (without auto-scroll)
+    view.dispatch({
+      selection: { anchor: pos },
+    });
+
+    // Get the line element and smooth scroll to it
+    requestAnimationFrame(() => {
+      try {
+        const line = view.state.doc.lineAt(pos);
+        const domAtPos = view.domAtPos(line.from);
+        const lineElement = domAtPos?.node?.parentElement;
+
+        if (lineElement) {
+          // Smooth scroll to center the line
+          lineElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+          });
+
+          // Flash highlight effect after scroll completes
+          setTimeout(() => {
+            lineElement.classList.add('highlight-flash');
+            setTimeout(() => lineElement.classList.remove('highlight-flash'), 1000);
+          }, 300);
+        }
+      } catch (e) {
+        // Fallback: use CodeMirror's built-in scroll
+        view.dispatch({
+          effects: CMEditorView.scrollIntoView(pos, { y: 'center' }),
+        });
+      }
+    });
+  }, [scrollTarget]);
+
+  // Auto-hide header on scroll down, show on scroll up
+  const [headerHidden, setHeaderHidden] = useState(false);
+  const lastScrollTop = useRef(0);
+
+  useEffect(() => {
+    if (!viewRef.current) return;
+
+    const scrollDOM = viewRef.current.scrollDOM;
+    if (!scrollDOM) return;
+
+    const handleScroll = () => {
+      const currentScrollTop = scrollDOM.scrollTop;
+      const scrollDelta = currentScrollTop - lastScrollTop.current;
+
+      // Only trigger if scrolled more than 5px (debounce tiny movements)
+      if (Math.abs(scrollDelta) > 5) {
+        if (scrollDelta > 0 && currentScrollTop > 60) {
+          // Scrolling down & past header height - hide
+          setHeaderHidden(true);
+        } else if (scrollDelta < 0) {
+          // Scrolling up - show
+          setHeaderHidden(false);
+        }
+        lastScrollTop.current = currentScrollTop;
+      }
+
+      // Always show header when at the very top
+      if (currentScrollTop < 10) {
+        setHeaderHidden(false);
+      }
+    };
+
+    scrollDOM.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollDOM.removeEventListener('scroll', handleScroll);
   }, [isReady]);
 
   return (
     <div className="markdown-editor-wrapper">
-      <div className="breadcrumb">
+      <div className={`breadcrumb ${headerHidden ? 'hidden' : ''}`}>
         <span className="breadcrumb-item">Home</span>
         <span className="breadcrumb-separator">/</span>
         <span className="breadcrumb-item">happy-chaos</span>

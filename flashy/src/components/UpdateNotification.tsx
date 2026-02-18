@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { logger } from '../lib/logger';
 import './UpdateNotification.css';
 
 const CHECK_INTERVAL = 15000; // Check every 15 seconds (critical for CRDT integrity)
@@ -33,8 +34,8 @@ export function UpdateNotification() {
         const currentMatch = document.querySelector('script[src*="main."]')?.getAttribute('src')?.match(/main\.([a-f0-9]+)\.js/);
 
         if (scriptMatch && currentMatch && scriptMatch[1] !== currentMatch[1]) {
-          console.log('🎉 New version detected! Current:', currentMatch[1], 'New:', scriptMatch[1]);
-          console.log('⏳ Auto-reloading in 3 seconds...');
+          logger.log('🎉 New version detected! Current:', currentMatch[1], 'New:', scriptMatch[1]);
+          logger.log('⏳ Auto-reloading in 3 seconds...');
           setUpdateAvailable(true);
 
           // Auto-reload after 3 seconds
@@ -43,7 +44,7 @@ export function UpdateNotification() {
           }, 3000);
         }
       } catch (error) {
-        console.error('Failed to check for updates:', error);
+        logger.error('Failed to check for updates:', error);
       }
     };
 
@@ -57,7 +58,7 @@ export function UpdateNotification() {
   }, []);
 
   const handleRefresh = async () => {
-    console.log('🔄 Forcing hard refresh and clearing all caches...');
+    logger.log('🔄 Forcing hard refresh and clearing all caches...');
 
     // Clear all storage
     localStorage.clear();
