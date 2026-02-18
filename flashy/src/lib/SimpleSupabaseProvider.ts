@@ -5,6 +5,7 @@
 import * as Y from 'yjs';
 import * as awarenessProtocol from 'y-protocols/awareness';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { logger } from './logger';
 
 export class SimpleSupabaseProvider {
   doc: Y.Doc;
@@ -22,7 +23,7 @@ export class SimpleSupabaseProvider {
     this.channelName = channelName;
     this.awareness = new awarenessProtocol.Awareness(doc);
 
-    console.log('📺 SimpleProvider: Creating channel:', channelName);
+    logger.log('📺 SimpleProvider: Creating channel:', channelName);
   }
 
   // Implement Provider interface methods for compatibility with createBinding
@@ -50,15 +51,15 @@ export class SimpleSupabaseProvider {
   connect(): void {
     // Don't reconnect if already connected
     if (this.connected && this.channel) {
-      console.log('✅ SimpleProvider: Already connected, skipping');
+      logger.log('✅ SimpleProvider: Already connected, skipping');
       return;
     }
 
-    console.log('🔌 SimpleProvider: Connecting...');
+    logger.log('🔌 SimpleProvider: Connecting...');
 
     // Cleanup old channel if exists
     if (this.channel) {
-      console.log('🧹 Cleaning up old channel...');
+      logger.log('🧹 Cleaning up old channel...');
       this.channel.unsubscribe();
       this.channel = null;
     }
@@ -75,41 +76,98 @@ export class SimpleSupabaseProvider {
 
     // Listen for document updates from other clients
     this.channel.on('broadcast', { event: 'doc-update' }, ({ payload }: any) => {
-      console.log('📥 SimpleProvider: Received doc update', payload.update.length, 'bytes');
-      const update = new Uint8Array(payload.update);
-      console.log('   Doc clientID:', this.doc.clientID);
-      console.log('   Content BEFORE:', this.doc.getText('content').toString().substring(0, 50));
-      Y.applyUpdate(this.doc, update, this);
-      console.log('   Content AFTER:', this.doc.getText('content').toString().substring(0, 50));
-      console.log('✅ Applied update to local doc');
+      try {
+        logger.log('📥 SimpleProvider: Received doc update', payload.update.length, 'bytes');
+        const update = new Uint8Array(payload.update);
+        Y.applyUpdate(this.doc, update, this);
+        logger.log('✅ Applied update to local doc');
+      } catch (error) {
+        logger.error('❌ SimpleProvider: Failed to apply doc update', error);
+      }
+    });
+
+    // Listen for sync requests from new clients
+    this.channel.on('broadcast', { event: 'sync-request' }, ({ payload }: any) => {
+      try {
+        // Don't respond to our own sync request
+        if (payload.clientId === this.doc.clientID) return;
+
+        logger.log('📥 SimpleProvider: Received sync request from', payload.clientId);
+        // Send our full state to the requesting client
+        const state = Y.encodeStateAsUpdate(this.doc);
+        logger.log('📤 SimpleProvider: Sending full state', state.length, 'bytes');
+        this.channel.send({
+          type: 'broadcast',
+          event: 'sync-response',
+          payload: {
+            update: Array.from(state),
+            targetClientId: payload.clientId
+          }
+        });
+      } catch (error) {
+        logger.error('❌ SimpleProvider: Failed to handle sync request', error);
+      }
+    });
+
+    // Listen for sync responses
+    this.channel.on('broadcast', { event: 'sync-response' }, ({ payload }: any) => {
+      try {
+        // Only apply if this response is for us
+        if (payload.targetClientId !== this.doc.clientID) return;
+
+        logger.log('📥 SimpleProvider: Received sync response', payload.update.length, 'bytes');
+        const update = new Uint8Array(payload.update);
+        Y.applyUpdate(this.doc, update, this);
+        logger.log('✅ Applied full state sync');
+      } catch (error) {
+        logger.error('❌ SimpleProvider: Failed to apply sync response', error);
+      }
     });
 
     // Listen for awareness updates (cursors, presence)
     this.channel.on('broadcast', { event: 'awareness' }, ({ payload }: any) => {
-      console.log('📥 SimpleProvider: Received awareness update');
-      const update = new Uint8Array(payload.update);
-      awarenessProtocol.applyAwarenessUpdate(this.awareness, update, this);
+      try {
+        logger.log('📥 SimpleProvider: Received awareness update');
+        const update = new Uint8Array(payload.update);
+        awarenessProtocol.applyAwarenessUpdate(this.awareness, update, this);
+      } catch (error) {
+        logger.error('❌ SimpleProvider: Failed to apply awareness update', error);
+      }
     });
 
     // Subscribe to channel
     this.channel.subscribe((status: string) => {
-      console.log('📡 SimpleProvider: Status:', status);
+      try {
+        logger.log('📡 SimpleProvider: Status:', status);
 
-      if (status === 'SUBSCRIBED') {
-        this.connected = true;
-        console.log('✅ SimpleProvider: Connected!');
+        if (status === 'SUBSCRIBED') {
+          this.connected = true;
+          logger.log('✅ SimpleProvider: Connected!');
 
-        // Emit status event for compatibility
-        this.emit('status', { status: 'connected' });
+          // Emit status event for compatibility
+          this.emit('status', { status: 'connected' });
 
-        // Set up local update broadcasting
-        this.setupLocalBroadcasting();
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error('❌ SimpleProvider: Channel error');
-        this.connected = false;
-        this.emit('status', { status: 'disconnected' });
-      } else if (status === 'TIMED_OUT') {
-        console.error('❌ SimpleProvider: Timeout');
+          // Set up local update broadcasting
+          this.setupLocalBroadcasting();
+
+          // Request sync from other clients to get their state
+          logger.log('📤 SimpleProvider: Requesting sync from other clients');
+          this.channel.send({
+            type: 'broadcast',
+            event: 'sync-request',
+            payload: { clientId: this.doc.clientID }
+          });
+        } else if (status === 'CHANNEL_ERROR') {
+          logger.error('❌ SimpleProvider: Channel error');
+          this.connected = false;
+          this.emit('status', { status: 'disconnected' });
+        } else if (status === 'TIMED_OUT') {
+          logger.error('❌ SimpleProvider: Timeout');
+          this.connected = false;
+          this.emit('status', { status: 'disconnected' });
+        }
+      } catch (error) {
+        logger.error('❌ SimpleProvider: Error in subscription handler', error);
         this.connected = false;
         this.emit('status', { status: 'disconnected' });
       }
@@ -119,40 +177,40 @@ export class SimpleSupabaseProvider {
   private setupLocalBroadcasting(): void {
     // Only set up once
     if (this.broadcastingSetup) {
-      console.log('⏭️  Broadcasting already set up, skipping');
+      logger.log('⏭️  Broadcasting already set up, skipping');
       return;
     }
 
-    console.log('📡 Setting up local broadcasting...');
+    logger.log('📡 Setting up local broadcasting...');
     this.broadcastingSetup = true;
 
     // Broadcast local document changes
     this.doc.on('update', (update: Uint8Array, origin: any) => {
-      console.log('📝 SimpleProvider: Doc update detected!');
-      console.log('   Origin:', origin?.constructor?.name || origin);
-      console.log('   Origin === this?', origin === this);
-      console.log('   Connected?', this.connected);
-      console.log('   Update size:', update.length, 'bytes');
+      logger.log('📝 SimpleProvider: Doc update detected!');
+      logger.log('   Origin:', origin?.constructor?.name || origin);
+      logger.log('   Origin === this?', origin === this);
+      logger.log('   Connected?', this.connected);
+      logger.log('   Update size:', update.length, 'bytes');
 
       // Don't broadcast updates that came from remote (would create loop)
       // But DO broadcast updates from local editing (CodeMirror/yCollab)
       if (origin === this) {
-        console.log('⏸️  Skipping broadcast - origin is this provider (came from remote)');
+        logger.log('⏸️  Skipping broadcast - origin is this provider (came from remote)');
         return;
       }
 
       if (!this.connected) {
-        console.log('⏸️  Skipping broadcast - not connected');
+        logger.log('⏸️  Skipping broadcast - not connected');
         return;
       }
 
-      console.log('📤 SimpleProvider: Broadcasting doc update:', update.length, 'bytes');
+      logger.log('📤 SimpleProvider: Broadcasting doc update:', update.length, 'bytes');
       const result = this.channel.send({
         type: 'broadcast',
         event: 'doc-update',
         payload: { update: Array.from(update) }
       });
-      console.log('📤 Broadcast result:', result);
+      logger.log('📤 Broadcast result:', result);
     });
 
     // Broadcast local awareness changes
@@ -162,7 +220,7 @@ export class SimpleSupabaseProvider {
       const changedClients = added.concat(updated).concat(removed);
       const update = awarenessProtocol.encodeAwarenessUpdate(this.awareness, changedClients);
 
-      console.log('📤 SimpleProvider: Broadcasting awareness');
+      logger.log('📤 SimpleProvider: Broadcasting awareness');
       this.channel.send({
         type: 'broadcast',
         event: 'awareness',
@@ -172,7 +230,7 @@ export class SimpleSupabaseProvider {
   }
 
   disconnect(): void {
-    console.log('🔌 SimpleProvider: Disconnecting...');
+    logger.log('🔌 SimpleProvider: Disconnecting...');
     if (this.channel) {
       this.channel.unsubscribe();
     }
@@ -181,7 +239,7 @@ export class SimpleSupabaseProvider {
   }
 
   destroy(): void {
-    console.log('🗑️  SimpleProvider: Destroying...');
+    logger.log('🗑️  SimpleProvider: Destroying...');
     this.disconnect();
     this.awareness.destroy();
   }
