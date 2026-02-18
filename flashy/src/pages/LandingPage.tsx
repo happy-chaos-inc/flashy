@@ -99,15 +99,12 @@ export function LandingPage() {
 
         <div className="landing-features">
           <div className="landing-feature">
-            <span className="feature-icon">📝</span>
             <span>Real-time collaboration</span>
           </div>
           <div className="landing-feature">
-            <span className="feature-icon">🤖</span>
             <span>AI study assistant</span>
           </div>
           <div className="landing-feature">
-            <span className="feature-icon">🎯</span>
             <span>Study mode with flashcards</span>
           </div>
         </div>
