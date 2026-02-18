@@ -1,0 +1,341 @@
+import { useState, useRef, useEffect } from 'react';
+import { Star, ChevronLeft, ChevronDown, ChevronUp, Play, Edit2, Info } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import packageJson from '../../package.json';
+
+const version = packageJson.version;
+
+export interface Flashcard {
+  id: string;
+  term: string;
+  definition: string;
+  lineNumber: number;
+  section?: string;
+}
+
+interface FlashcardSidebarProps {
+  flashcards: Flashcard[];
+  starredCards: Set<string>;
+  onToggleStar: (cardId: string, event: React.MouseEvent) => void;
+  onStartStudy: (cardIds?: string[]) => void;
+  isAnimating?: boolean;
+}
+
+export function FlashcardSidebar({
+  flashcards,
+  starredCards,
+  onToggleStar,
+  onStartStudy,
+  isAnimating = false,
+}: FlashcardSidebarProps) {
+  // Internal state for sidebar UI
+  const [previewCardIds, setPreviewCardIds] = useState<Set<string>>(new Set());
+  const [flippedCardIds, setFlippedCardIds] = useState<Set<string>>(new Set());
+  const [showOnlyStarred, setShowOnlyStarred] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [selectedSections, setSelectedSections] = useState<Set<string>>(new Set());
+  const [showInfoMenu, setShowInfoMenu] = useState(false);
+  const infoMenuRef = useRef<HTMLDivElement>(null);
+  const hasInitializedSections = useRef(false);
+
+  // Collapse all sections by default on first load
+  useEffect(() => {
+    if (!hasInitializedSections.current && flashcards.length > 0) {
+      const allSections = new Set(flashcards.map(card => card.section || 'Unsorted'));
+      setCollapsedSections(allSections);
+      hasInitializedSections.current = true;
+    }
+  }, [flashcards]);
+
+  // Close info menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (infoMenuRef.current && !infoMenuRef.current.contains(event.target as Node)) {
+        setShowInfoMenu(false);
+      }
+    };
+
+    if (showInfoMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showInfoMenu]);
+
+  // Handle flashcard click - expand card in place
+  const handleFlashcardClick = (card: Flashcard) => {
+    const newPreviewIds = new Set(previewCardIds);
+    if (newPreviewIds.has(card.id)) {
+      newPreviewIds.delete(card.id);
+      const newFlippedIds = new Set(flippedCardIds);
+      newFlippedIds.delete(card.id);
+      setFlippedCardIds(newFlippedIds);
+    } else {
+      newPreviewIds.add(card.id);
+    }
+    setPreviewCardIds(newPreviewIds);
+  };
+
+  const togglePreviewFlip = (cardId: string) => {
+    const newFlippedIds = new Set(flippedCardIds);
+    if (newFlippedIds.has(cardId)) {
+      newFlippedIds.delete(cardId);
+    } else {
+      newFlippedIds.add(cardId);
+    }
+    setFlippedCardIds(newFlippedIds);
+  };
+
+  const toggleSectionCollapse = (sectionName: string) => {
+    const newCollapsed = new Set(collapsedSections);
+    if (newCollapsed.has(sectionName)) {
+      newCollapsed.delete(sectionName);
+    } else {
+      newCollapsed.add(sectionName);
+    }
+    setCollapsedSections(newCollapsed);
+  };
+
+  const toggleSectionSelection = (sectionName: string) => {
+    const newSelected = new Set(selectedSections);
+    if (newSelected.has(sectionName)) {
+      newSelected.delete(sectionName);
+    } else {
+      newSelected.add(sectionName);
+    }
+    setSelectedSections(newSelected);
+  };
+
+  const filteredCards = showOnlyStarred
+    ? flashcards.filter(card => starredCards.has(card.id))
+    : flashcards;
+
+  // Group cards by section
+  const sections: { [key: string]: Flashcard[] } = {};
+  filteredCards.forEach(card => {
+    const sectionName = card.section || 'Unsorted';
+    if (!sections[sectionName]) {
+      sections[sectionName] = [];
+    }
+    sections[sectionName].push(card);
+  });
+
+  // Get cards from selected sections (or all if none selected)
+  const getSelectedCardIds = (): string[] => {
+    if (selectedSections.size === 0) {
+      return filteredCards.map(card => card.id);
+    }
+    return filteredCards
+      .filter(card => selectedSections.has(card.section || 'Unsorted'))
+      .map(card => card.id);
+  };
+
+  return (
+    <div className={`flashcard-sidebar ${isAnimating ? 'animating' : ''}`}>
+      <div className="flashcard-header">
+        <div className="flashcard-title-row">
+          <h3>Flashcards</h3>
+          <span className="flashcard-count">
+            {showOnlyStarred
+              ? `${flashcards.filter(card => starredCards.has(card.id)).length} starred`
+              : `${flashcards.length} cards`
+            }
+          </span>
+        </div>
+        {flashcards.length > 0 && (
+          <div className="toolbar-row">
+            <button
+              className="study-button"
+              onClick={() => onStartStudy(getSelectedCardIds())}
+              title={selectedSections.size > 0 ? `Study ${selectedSections.size} selected section(s)` : "Study all cards"}
+            >
+              <Play size={20} fill="currentColor" />
+              Learn{selectedSections.size > 0 ? ` (${selectedSections.size})` : ''}
+            </button>
+            <button
+              className={`toolbar-icon-button ${showOnlyStarred ? 'active' : ''}`}
+              onClick={() => setShowOnlyStarred(!showOnlyStarred)}
+              title={showOnlyStarred ? "Show all cards" : "Show starred only"}
+            >
+              <Star size={20} fill={showOnlyStarred ? "currentColor" : "none"} />
+            </button>
+            <div ref={infoMenuRef} style={{ position: 'relative' }}>
+              <button
+                className="toolbar-icon-button"
+                title="Info"
+                onClick={() => setShowInfoMenu(!showInfoMenu)}
+              >
+                <Info size={20} />
+              </button>
+              {showInfoMenu && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: '8px',
+                  background: 'white',
+                  border: '1px solid #ddd',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                  padding: '16px',
+                  zIndex: 1000,
+                  whiteSpace: 'nowrap'
+                }}>
+                  <div style={{ fontSize: '14px', color: '#333', fontWeight: 500 }}>
+                    <span>made with dreams :)</span>
+                    <br />
+                    <span><u>v{version}</u></span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {flashcards.length === 0 ? (
+        <p className="sidebar-placeholder">
+          Add H2 headers (## Term) to create flashcards
+        </p>
+      ) : showOnlyStarred && filteredCards.length === 0 ? (
+        <p className="sidebar-placeholder">
+          No starred cards yet. Click the star icon on a card to add it to your favorites!
+        </p>
+      ) : (
+        <>
+          {Object.entries(sections).map(([sectionName, sectionCards]) => {
+            const isCollapsed = collapsedSections.has(sectionName);
+            const starredCount = sectionCards.filter(card => starredCards.has(card.id)).length;
+            const sectionHasStarred = starredCount > 0;
+
+            return (
+              <div key={sectionName} className="flashcard-section-group">
+                <div
+                  className={`flashcard-section ${selectedSections.has(sectionName) ? 'selected' : ''}`}
+                  onClick={() => toggleSectionSelection(sectionName)}
+                >
+                  <span className="section-name">{sectionName}</span>
+                  {sectionHasStarred && (
+                    <span className="section-starred">
+                      <Star size={14} fill="#F59E0B" color="#F59E0B" />
+                      <span className="section-starred-count">{starredCount}</span>
+                    </span>
+                  )}
+                  <button
+                    className={`section-card-count ${isCollapsed ? 'collapsed' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSectionCollapse(sectionName);
+                    }}
+                    title={isCollapsed ? `Show ${sectionCards.length} cards` : "Hide cards"}
+                  >
+                    {sectionCards.length}
+                    {isCollapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+                  </button>
+                </div>
+                {!isCollapsed && (
+                  <div className="flashcard-list">
+                    {sectionCards.map((card) => (
+                      <div key={card.id}>
+                        {previewCardIds.has(card.id) ? (
+                          <div className="sidebar-card-preview">
+                            <div
+                              className={`sidebar-preview-card ${flippedCardIds.has(card.id) ? 'flipped' : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                togglePreviewFlip(card.id);
+                              }}
+                            >
+                              <div className="sidebar-preview-card-front">
+                                <div className="card-header-row">
+                                  <button
+                                    className="preview-back-button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleFlashcardClick(card);
+                                    }}
+                                  >
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '2px', pointerEvents: 'none' }}>
+                                      <ChevronLeft size={14} />
+                                      Back
+                                    </span>
+                                  </button>
+                                  <div className="card-label">Term</div>
+                                </div>
+                                <div className="card-content">{card.term}</div>
+                              </div>
+                              <div className="sidebar-preview-card-back">
+                                <div className="card-header-row">
+                                  <button
+                                    className="preview-back-button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleFlashcardClick(card);
+                                    }}
+                                  >
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '2px', pointerEvents: 'none' }}>
+                                      <ChevronLeft size={14} />
+                                      Back
+                                    </span>
+                                  </button>
+                                  <div className="card-label">Definition</div>
+                                </div>
+                                <div className="card-content card-content-markdown">
+                                  <ReactMarkdown>{card.definition}</ReactMarkdown>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="preview-hint">Click to flip</div>
+                          </div>
+                        ) : (
+                          <div
+                            className={`flashcard ${starredCards.has(card.id) ? 'starred' : ''}`}
+                            onClick={() => handleFlashcardClick(card)}
+                          >
+                            <div className="flashcard-content-wrapper">
+                              <div className="flashcard-top-row">
+                                <div className="flashcard-term">{card.term}</div>
+                                <div className="flashcard-icons">
+                                  <button
+                                    className="icon-button edit"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      window.dispatchEvent(new CustomEvent('scrollToLine', {
+                                        detail: { lineNumber: card.lineNumber }
+                                      }));
+                                    }}
+                                    title="Edit in editor"
+                                  >
+                                    <Edit2 size={18} />
+                                  </button>
+                                  <button
+                                    className={`icon-button star ${starredCards.has(card.id) ? 'starred' : ''}`}
+                                    onClick={(e) => onToggleStar(card.id, e)}
+                                    title={starredCards.has(card.id) ? 'Unstar' : 'Star'}
+                                  >
+                                    <Star size={18} fill={starredCards.has(card.id) ? 'currentColor' : 'none'} />
+                                  </button>
+                                </div>
+                              </div>
+                              {card.definition && (
+                                <div className="flashcard-definition">
+                                  <ReactMarkdown>{card.definition}</ReactMarkdown>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}

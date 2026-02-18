@@ -1,10 +1,20 @@
 // Singleton manager for collaboration
-import { Doc } from 'yjs';
+import { Doc, Text as YText, Array as YArray } from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { SimpleSupabaseProvider } from './SimpleSupabaseProvider';
 import { DocumentPersistence } from './DocumentPersistence';
 import { supabase } from '../config/supabase';
 import { generateUserInfo } from './userColors';
+import { logger } from './logger';
+
+// Chat message schema for collaborative AI chat
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  author?: { name: string; color: string };  // For user messages
+  timestamp: number;
+}
 
 class CollaborationManager {
   private static instance: CollaborationManager | null = null;
@@ -17,6 +27,9 @@ class CollaborationManager {
   private dbLoaded: boolean = false;
   private dbLoadPromise: Promise<void> | null = null;
   private userInfo: { userId: string; color: string; name: string } | null = null;
+  private currentRoomId: string | null = null;
+  private connectPromise: Promise<{ ydoc: Doc; provider: SimpleSupabaseProvider; userInfo: { userId: string; color: string; name: string } }> | null = null;
+  private colorChangeListeners: Set<(color: string) => void> = new Set();
 
   private constructor() {}
 
@@ -27,48 +40,104 @@ class CollaborationManager {
     return CollaborationManager.instance;
   }
 
-  async connect(): Promise<{ ydoc: Doc; provider: SimpleSupabaseProvider; userInfo: { userId: string; color: string; name: string } }> {
+  /**
+   * Get the current room ID
+   */
+  getRoomId(): string | null {
+    return this.currentRoomId;
+  }
+
+  async connect(roomId?: string): Promise<{ ydoc: Doc; provider: SimpleSupabaseProvider; userInfo: { userId: string; color: string; name: string } }> {
+    // If no roomId provided and we're already connected, reuse existing connection
+    if (!roomId && this.currentRoomId && this.ydoc && this.provider) {
+      roomId = this.currentRoomId;
+    }
+    // Default to 'default' if still no roomId
+    if (!roomId) {
+      roomId = 'default';
+    }
+
     this.refCount++;
-    console.log('📊 CollaborationManager.connect() - refCount:', this.refCount);
+    logger.log(`📊 CollaborationManager.connect(${roomId}) - refCount:`, this.refCount);
 
     // Cancel any pending cleanup
     if (this.cleanupTimer) {
-      console.log('⏸️  Canceling scheduled cleanup (component remounted)');
+      logger.log('⏸️  Canceling scheduled cleanup (component remounted)');
       clearTimeout(this.cleanupTimer);
       this.cleanupTimer = null;
     }
 
-    // Create only once, reuse on subsequent calls
+    // If switching rooms, force cleanup first
+    if (this.currentRoomId && this.currentRoomId !== roomId && this.ydoc) {
+      logger.log(`🔄 Switching rooms: ${this.currentRoomId} → ${roomId}`);
+      this.forceCleanup();
+      this.connectPromise = null; // Reset promise when switching rooms
+    }
+
+    // If already connected to this room, return existing connection
+    if (this.ydoc && this.provider && this.userInfo && this.currentRoomId === roomId) {
+      logger.log('♻️  Reusing existing Yjs doc and provider');
+
+      // Make sure provider is connected
+      if (!this.provider.connected) {
+        logger.log('🔌 Reconnecting provider...');
+        this.provider.connect();
+      }
+
+      return { ydoc: this.ydoc, provider: this.provider, userInfo: this.userInfo };
+    }
+
+    // If connection is in progress, wait for it
+    if (this.connectPromise) {
+      logger.log('⏳ Connection in progress, waiting...');
+      return this.connectPromise;
+    }
+
+    // Start new connection
+    this.connectPromise = this.doConnect(roomId);
+    try {
+      return await this.connectPromise;
+    } finally {
+      // Don't clear connectPromise - keep it for subsequent calls
+    }
+  }
+
+  private async doConnect(roomId: string): Promise<{ ydoc: Doc; provider: SimpleSupabaseProvider; userInfo: { userId: string; color: string; name: string } }> {
+    // Create only once
     if (!this.ydoc || !this.provider) {
-      console.log('🆕 Creating new Yjs doc and provider');
+      logger.log(`🆕 Creating new Yjs doc and provider for room: ${roomId}`);
+      this.currentRoomId = roomId;
 
       this.ydoc = new Doc();
 
       // Check if IndexedDB is stale (older than 1 hour)
-      const lastVisit = localStorage.getItem('flashy_last_visit');
+      const lastVisitKey = `flashy_last_visit_${roomId}`;
+      const lastVisit = localStorage.getItem(lastVisitKey);
       const now = Date.now();
       const oneHour = 60 * 60 * 1000;
 
+      const indexedDbName = `flashy-doc-${roomId}`;
       if (lastVisit && (now - parseInt(lastVisit)) > oneHour) {
-        console.log('🧹 IndexedDB is stale (>1hr old), clearing...');
-        indexedDB.deleteDatabase('flashy-doc');
-        console.log('✅ Stale IndexedDB cleared - will load fresh from database');
+        logger.log('🧹 IndexedDB is stale (>1hr old), clearing...');
+        indexedDB.deleteDatabase(indexedDbName);
+        logger.log('✅ Stale IndexedDB cleared - will load fresh from database');
       }
 
       // Update last visit timestamp
-      localStorage.setItem('flashy_last_visit', now.toString());
+      localStorage.setItem(lastVisitKey, now.toString());
 
-      // Add IndexedDB persistence for instant local sync
-      this.indexeddbProvider = new IndexeddbPersistence('flashy-doc', this.ydoc);
+      // Add IndexedDB persistence for instant local sync (per room)
+      this.indexeddbProvider = new IndexeddbPersistence(indexedDbName, this.ydoc);
       this.indexeddbProvider.on('synced', () => {
-        console.log('💾 IndexedDB synced - local data loaded');
+        logger.log('💾 IndexedDB synced - local data loaded');
       });
 
-      // Create provider for real-time sync
-      this.provider = new SimpleSupabaseProvider(this.ydoc, supabase, 'collaboration-room');
+      // Create provider for real-time sync (channel per room)
+      const channelName = `room-${roomId}`;
+      this.provider = new SimpleSupabaseProvider(this.ydoc, supabase, channelName);
 
-      // Add database persistence for cloud backup (just dumb storage)
-      this.persistence = new DocumentPersistence(this.ydoc);
+      // Add database persistence for cloud backup (per room)
+      this.persistence = new DocumentPersistence(this.ydoc, roomId);
 
       // Load from database (store promise so we can wait for it)
       this.dbLoadPromise = this.loadFromDatabase();
@@ -81,28 +150,51 @@ class CollaborationManager {
 
       // Set user info with color for CodeMirror cursors (SINGLE SOURCE OF TRUTH)
       this.userInfo = generateUserInfo();
-      console.log('👤 User info:', this.userInfo);
+
+      // Check if our color is already in use by another user
+      const usedColors = this.getUsedColors();
+      if (usedColors.includes(this.userInfo.color.toUpperCase())) {
+        // Find an available color
+        const { USER_COLORS } = await import('./userColors');
+        const availableColor = USER_COLORS.find(
+          c => !usedColors.includes(c.toUpperCase())
+        );
+        if (availableColor) {
+          this.userInfo.color = availableColor;
+          sessionStorage.setItem('flashy_user_color', availableColor);
+          logger.log('🎨 Assigned available color:', availableColor);
+        }
+      }
+
+      logger.log('👤 User info:', this.userInfo);
       this.provider.awareness.setLocalStateField('user', {
         name: this.userInfo.name,
         color: this.userInfo.color,
         colorLight: this.userInfo.color + '40', // Add transparency for selections
       });
-    } else {
-      console.log('♻️  Reusing existing Yjs doc and provider');
-
-      // Make sure provider is connected
-      if (!this.provider.connected) {
-        console.log('🔌 Reconnecting provider...');
-        this.provider.connect();
-      }
-
-      // Ensure userInfo is set (should be from first connect)
-      if (!this.userInfo) {
-        this.userInfo = generateUserInfo();
-      }
     }
 
-    return { ydoc: this.ydoc, provider: this.provider, userInfo: this.userInfo! };
+    return { ydoc: this.ydoc!, provider: this.provider!, userInfo: this.userInfo! };
+  }
+
+  /**
+   * Force cleanup without waiting - used when switching rooms
+   */
+  private forceCleanup(): void {
+    logger.log('🧹 Force cleanup for room switch');
+    if (this.persistence) {
+      this.persistence.saveNow();
+      this.persistence.destroy();
+    }
+    this.indexeddbProvider?.destroy();
+    this.provider?.destroy();
+    this.indexeddbProvider = null;
+    this.provider = null;
+    this.persistence = null;
+    this.ydoc = null;
+    this.dbLoaded = false;
+    this.dbLoadPromise = null;
+    this.currentRoomId = null;
   }
 
   /**
@@ -122,16 +214,16 @@ class CollaborationManager {
   private async checkRoomCapacity(): Promise<void> {
     if (!this.provider) return;
 
-    const MAX_USERS = 8;
+    const MAX_USERS = 4;
 
     // Wait for initial awareness sync (500ms should be enough)
     await new Promise(resolve => setTimeout(resolve, 500));
 
     const currentUsers = this.provider.awareness.getStates().size;
-    console.log(`👥 Current users in room: ${currentUsers}/${MAX_USERS}`);
+    logger.log(`👥 Current users in room: ${currentUsers}/${MAX_USERS}`);
 
     if (currentUsers >= MAX_USERS) {
-      console.error('❌ Room is full! Cannot join.');
+      logger.error('❌ Room is full! Cannot join.');
       // Disconnect immediately
       this.provider.disconnect();
       this.provider.destroy();
@@ -145,13 +237,13 @@ class CollaborationManager {
     if (this.dbLoaded || !this.persistence || !this.ydoc) return;
 
     try {
-      console.log('🔄 Merging CRDT states: IndexedDB + Database...');
+      logger.log('🔄 Merging CRDT states: IndexedDB + Database...');
 
       // Get IndexedDB state BEFORE loading database
       // This preserves any local offline edits
       const indexedDBLength = this.ydoc.getText('content').length;
 
-      console.log('📊 IndexedDB state:', indexedDBLength, 'chars');
+      logger.log('📊 IndexedDB state:', indexedDBLength, 'chars');
 
       // Load from database - this will MERGE with IndexedDB via CRDT
       const loaded = await this.persistence.loadFromDatabase();
@@ -160,20 +252,20 @@ class CollaborationManager {
       const finalLength = this.ydoc.getText('content').length;
 
       if (loaded) {
-        console.log('✅ CRDT merge complete!');
-        console.log('   IndexedDB had:', indexedDBLength, 'chars');
-        console.log('   Merged result:', finalLength, 'chars');
+        logger.log('✅ CRDT merge complete!');
+        logger.log('   IndexedDB had:', indexedDBLength, 'chars');
+        logger.log('   Merged result:', finalLength, 'chars');
 
         // If merged result is different, it means we had offline edits
         if (finalLength > indexedDBLength) {
-          console.log('🔀 Database had newer content - merged via CRDT');
+          logger.log('🔀 Database had newer content - merged via CRDT');
         } else if (finalLength < indexedDBLength) {
-          console.log('🔀 IndexedDB had newer content - merged via CRDT');
+          logger.log('🔀 IndexedDB had newer content - merged via CRDT');
         } else if (indexedDBLength > 0) {
-          console.log('✓ Both sources had same content');
+          logger.log('✓ Both sources had same content');
         }
       } else {
-        console.log('📝 No database content, using IndexedDB state only');
+        logger.log('📝 No database content, using IndexedDB state only');
       }
 
       // Enable auto-save after loading
@@ -182,7 +274,7 @@ class CollaborationManager {
       // Add save-on-close to prevent data loss
       this.addBeforeUnloadHandler();
     } catch (error) {
-      console.error('❌ Failed to load from database:', error);
+      logger.error('❌ Failed to load from database:', error);
       // Continue anyway - IndexedDB might have data
       this.persistence?.enableAutoSave();
     }
@@ -190,7 +282,7 @@ class CollaborationManager {
 
   private addBeforeUnloadHandler(): void {
     window.addEventListener('beforeunload', () => {
-      console.log('⚠️ Browser closing - forcing final save and cleanup...');
+      logger.log('⚠️ Browser closing - forcing final save and cleanup...');
 
       // Remove our awareness state immediately so others see us leave
       if (this.provider) {
@@ -204,17 +296,90 @@ class CollaborationManager {
     });
   }
 
+  /**
+   * Get the collaborative chat prompt Y.Text
+   * This is shared between all users for collaborative prompt editing
+   */
+  getChatPrompt(): YText | null {
+    if (!this.ydoc) return null;
+    return this.ydoc.getText('chat-prompt');
+  }
+
+  /**
+   * Get the chat messages Y.Array
+   * This stores the shared message history (ephemeral - not persisted to DB)
+   */
+  getChatMessages(): YArray<ChatMessage> | null {
+    if (!this.ydoc) return null;
+    return this.ydoc.getArray<ChatMessage>('chat-messages');
+  }
+
+  /**
+   * Get current user info (name, color)
+   */
+  getUserInfo(): { userId: string; color: string; name: string } | null {
+    return this.userInfo;
+  }
+
+  /**
+   * Update the user's color and broadcast to awareness
+   */
+  setUserColor(color: string): void {
+    if (!this.userInfo || !this.provider) return;
+
+    this.userInfo.color = color;
+    sessionStorage.setItem('flashy_user_color', color);
+
+    // Broadcast the new color via awareness
+    this.provider.awareness.setLocalStateField('user', {
+      name: this.userInfo.name,
+      color: color,
+      colorLight: color + '40',
+    });
+
+    // Notify local listeners (for updating local UI)
+    this.colorChangeListeners.forEach(listener => listener(color));
+
+    logger.log('🎨 User color updated:', color);
+  }
+
+  /**
+   * Subscribe to color changes (for local UI updates)
+   */
+  onColorChange(listener: (color: string) => void): () => void {
+    this.colorChangeListeners.add(listener);
+    return () => this.colorChangeListeners.delete(listener);
+  }
+
+  /**
+   * Get colors currently used by other users in the room
+   */
+  getUsedColors(): string[] {
+    if (!this.provider) return [];
+
+    const usedColors: string[] = [];
+    const myClientId = this.provider.awareness.doc.clientID;
+
+    this.provider.awareness.getStates().forEach((state: any, clientId: number) => {
+      if (clientId !== myClientId && state.user?.color) {
+        usedColors.push(state.user.color.toUpperCase());
+      }
+    });
+
+    return usedColors;
+  }
+
   disconnect(): void {
     this.refCount--;
-    console.log('📊 CollaborationManager.disconnect() - refCount:', this.refCount);
+    logger.log('📊 CollaborationManager.disconnect() - refCount:', this.refCount);
 
     // Don't destroy immediately - allow for quick remounts
     if (this.refCount <= 0) {
-      console.log('⏳ Scheduling cleanup in 2s (in case of remount)...');
+      logger.log('⏳ Scheduling cleanup in 2s (in case of remount)...');
 
       this.cleanupTimer = setTimeout(() => {
         if (this.refCount <= 0) {
-          console.log('🧹 Cleaning up provider (confirmed no active references)');
+          logger.log('🧹 Cleaning up provider (confirmed no active references)');
 
           // Final save before cleanup
           if (this.persistence) {
@@ -232,7 +397,7 @@ class CollaborationManager {
           this.cleanupTimer = null;
           this.dbLoaded = false;
         } else {
-          console.log('♻️  Provider still in use, skipping cleanup');
+          logger.log('♻️  Provider still in use, skipping cleanup');
         }
       }, 2000);
     }
