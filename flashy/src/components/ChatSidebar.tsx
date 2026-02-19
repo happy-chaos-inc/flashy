@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Send, Trash2, Bot, User, Loader2, Settings, X, Key, Paperclip, FileText, Sparkles, Lightbulb, HelpCircle, Upload, ChevronDown, Plus, MessageSquare } from 'lucide-react';
+import { Send, Trash2, Bot, User, Loader2, Settings, X, Key, Paperclip, FileText, Sparkles, Lightbulb, HelpCircle, Upload, ChevronDown, Plus, MessageSquare, Copy, Check } from 'lucide-react';
 import { collaborationManager, ChatMessage, SharedAttachmentMeta, ChatThread } from '../lib/CollaborationManager';
 import { prosemirrorToMarkdown } from '../lib/prosemirrorToMarkdown';
 import { logger } from '../lib/logger';
@@ -140,6 +140,80 @@ async function extractPdfText(file: File): Promise<string> {
     pages.push(`\n[...truncated, showing 50 of ${pdf.numPages} pages]`);
   }
   return pages.join('\n\n');
+}
+
+// Render message content with code block detection and copy buttons
+function MessageContent({ content }: { content: string }) {
+  const [copiedBlock, setCopiedBlock] = useState<number | null>(null);
+
+  // Split content into text and code blocks
+  const parts: Array<{ type: 'text' | 'code'; content: string; lang?: string }> = [];
+  const codeBlockRegex = /```(\w*)\n?([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = codeBlockRegex.exec(content)) !== null) {
+    // Text before this code block
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', content: content.slice(lastIndex, match.index) });
+    }
+    parts.push({ type: 'code', content: match[2].trim(), lang: match[1] || undefined });
+    lastIndex = match.index + match[0].length;
+  }
+  // Remaining text after last code block
+  if (lastIndex < content.length) {
+    parts.push({ type: 'text', content: content.slice(lastIndex) });
+  }
+
+  // If no code blocks found, render as plain text
+  if (parts.length === 0 || (parts.length === 1 && parts[0].type === 'text')) {
+    return <>{content}</>;
+  }
+
+  const handleCopy = async (text: string, blockIndex: number) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedBlock(blockIndex);
+      setTimeout(() => setCopiedBlock(null), 2000);
+    } catch {
+      // Fallback
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopiedBlock(blockIndex);
+      setTimeout(() => setCopiedBlock(null), 2000);
+    }
+  };
+
+  let codeBlockCount = 0;
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.type === 'text') {
+          return <span key={i}>{part.content}</span>;
+        }
+        const blockIdx = codeBlockCount++;
+        return (
+          <div key={i} className="chat-code-block">
+            <div className="chat-code-header">
+              <span className="chat-code-lang">{part.lang || 'code'}</span>
+              <button
+                className="chat-code-copy"
+                onClick={() => handleCopy(part.content, blockIdx)}
+                title="Copy to clipboard"
+              >
+                {copiedBlock === blockIdx ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
+              </button>
+            </div>
+            <pre className="chat-code-content"><code>{part.content}</code></pre>
+          </div>
+        );
+      })}
+    </>
+  );
 }
 
 interface ChatSidebarProps {
@@ -1304,7 +1378,7 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
                   </>
                 )}
               </div>
-              <div className="chat-message-content">{msg.content}</div>
+              <div className="chat-message-content"><MessageContent content={msg.content} /></div>
             </div>
           ))
         )}

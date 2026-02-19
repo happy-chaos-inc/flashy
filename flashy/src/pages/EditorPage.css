@@ -370,6 +370,14 @@
   background: #8B6BB8;
 }
 
+.tutor-button {
+  background: linear-gradient(135deg, #B399D4, #9b7ec4);
+}
+
+.tutor-button:hover {
+  background: linear-gradient(135deg, #9b7ec4, #8B6BB8);
+}
+
 .toolbar-icon-button {
   width: 44px;
   height: 44px;

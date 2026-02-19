@@ -415,6 +415,65 @@
   word-break: break-word;
 }
 
+/* Code blocks in chat messages */
+.chat-code-block {
+  margin: 8px 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: none;
+  background: #1e1e2e;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.chat-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: #2a2a3d;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.chat-code-lang {
+  font-size: 11px;
+  font-weight: 600;
+  color: #B399D4;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.chat-code-copy {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(179, 153, 212, 0.15);
+  color: #c4b5d4;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.chat-code-copy:hover {
+  background: rgba(179, 153, 212, 0.3);
+  color: #e0d4f0;
+}
+
+.chat-code-content {
+  margin: 0;
+  padding: 14px 16px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #cdd6f4;
+}
+
 .chat-message-content.typing {
   display: flex;
   align-items: center;

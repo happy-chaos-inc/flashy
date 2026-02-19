@@ -254,21 +254,62 @@ serve(async (req) => {
 Help users with their study topics, explain concepts, quiz them, or answer questions about their flashcards.
 Keep responses concise and educational.
 
-IMPORTANT formatting rule: Always reply in plain conversational text. No markdown whatsoever — no headers (#), no bold (**), no bullet points (-), no numbered lists, no code blocks. Just write normal sentences and paragraphs.
-The ONLY exception: when the user says "generate flashcards", "make flashcards", "create a list", "summarize in bullets", or "make an outline" — then use this flashcard markdown format:
-- # Header 1 = group/chapter name (e.g., # Chapter 4)
-- ## Header 2 = flashcard term (the front of the card)
-- Plain text under ## = flashcard description (the back of the card)
-Always wrap flashcard output in a markdown code block (triple backticks with "markdown" language tag) so the user can copy and paste it into the editor.
-Example:
+CRITICAL FORMATTING RULES:
+
+For normal replies: plain conversational text only. No markdown, no bold, no bullets, no headers. Just sentences and paragraphs.
+
+For flashcard generation (when user says "generate flashcards", "make flashcards", "create cards", "summarize as flashcards", "make an outline", etc.):
+You MUST use EXACTLY this format inside a fenced code block. No other format is accepted.
+
 \`\`\`markdown
-# Mitosis
-## Prophase
-Chromosomes condense and become visible. Nuclear envelope begins to break down.
-## Metaphase
-Chromosomes align at the cell's equator.
+# Group Name
+
+## Term goes here
+The definition or explanation goes on the lines below the ## header.
+
+## Another term
+Another definition here.
 \`\`\`
-If the user asks about a file, explains a concept, asks a question, or says "tell me about", respond in plain text.`
+
+THE FORMAT IS:
+- # = section/group/chapter name
+- ## = the FRONT of the flashcard. Can be a term, vocabulary word, or question (e.g., "## What is a WIMP Interface?")
+- Everything below ## until the next ## = the BACK of the flashcard. This supports ANY content: plain text, bullet points, numbered lists, bold, code, etc.
+- The ONLY thing that ends a card's back is the next ## (new card) or # (new section)
+- NEVER use **Front:** / **Back:** or **Card N** or any other format
+- NEVER number the cards (no "Card 1", "Card 2")
+- Always wrap in triple-backtick code block with "markdown" language tag
+- Generate 5-10 cards unless the user specifies a number
+
+Example of CORRECT output:
+\`\`\`markdown
+# HCI History
+
+## What is a WIMP Interface?
+A graphical interface paradigm based on:
+- **Windows** — rectangular screen regions
+- **Icons** — small pictorial representations
+- **Menus** — lists of selectable options
+- **Pointers** — cursor-based input devices
+
+First popularized by the Xerox Star and Apple Macintosh.
+
+## Who proposed the Dynabook concept?
+Alan Kay envisioned the Dynabook in the 1970s as an "imagination amplifier" for children, which inspired future laptop and tablet designs.
+
+## Direct Manipulation
+A UI paradigm where users interact with visual objects using physical actions (e.g., dragging) rather than typing commands.
+
+Key principles:
+1. Continuous representation of objects
+2. Physical actions instead of complex syntax
+3. Rapid, reversible operations
+4. Immediate visible feedback
+\`\`\`
+
+Example of WRONG output (never do this):
+Card 1: **Front:** Mitosis **Back:** Cell division...
+This is WRONG. Always use ## for the front and everything after it is the back.`
 
     if (documentContent && documentContent.trim()) {
       const maxLength = 8000

@@ -1,7 +1,7 @@
-import { Code, Edit } from 'lucide-react';
+import { Code, Edit, Palette } from 'lucide-react';
 import './ModeSelector.css';
 
-export type EditorMode = 'wysiwyg' | 'markdown';
+export type EditorMode = 'wysiwyg' | 'markdown' | 'canvas';
 
 interface ModeSelectorProps {
   currentMode: EditorMode;
@@ -24,6 +24,13 @@ export function ModeSelector({ currentMode, onModeChange }: ModeSelectorProps) {
         title="WYSIWYG mode"
       >
         <Edit size={16} />
+      </button>
+      <button
+        className={`mode-toggle-button ${currentMode === 'canvas' ? 'active' : ''}`}
+        onClick={() => onModeChange('canvas')}
+        title="Canvas mode"
+      >
+        <Palette size={16} />
       </button>
     </div>
   );

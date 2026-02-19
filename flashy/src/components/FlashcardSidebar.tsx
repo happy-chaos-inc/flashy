@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Star, ChevronLeft, ChevronDown, ChevronUp, Play, Edit2, Info } from 'lucide-react';
+import { Star, ChevronLeft, ChevronDown, ChevronUp, Play, Edit2, Info, GraduationCap, Gamepad2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import packageJson from '../../package.json';
 
@@ -18,6 +18,8 @@ interface FlashcardSidebarProps {
   starredCards: Set<string>;
   onToggleStar: (cardId: string, event: React.MouseEvent) => void;
   onStartStudy: (cardIds?: string[]) => void;
+  onStartTutor: (cardIds?: string[]) => void;
+  onStartGames?: () => void;
   isAnimating?: boolean;
 }
 
@@ -26,6 +28,8 @@ export function FlashcardSidebar({
   starredCards,
   onToggleStar,
   onStartStudy,
+  onStartTutor,
+  onStartGames,
   isAnimating = false,
 }: FlashcardSidebarProps) {
   // Internal state for sidebar UI
@@ -154,6 +158,19 @@ export function FlashcardSidebar({
               <Play size={20} fill="currentColor" />
               Learn{selectedSections.size > 0 ? ` (${selectedSections.size})` : ''}
             </button>
+            <button
+              className="study-button tutor-button"
+              onClick={() => onStartTutor(getSelectedCardIds())}
+              title={selectedSections.size > 0 ? `Quiz on ${selectedSections.size} selected section(s)` : "Quiz on all cards"}
+            >
+              <GraduationCap size={20} />
+              Tutor
+            </button>
+            {onStartGames && (
+              <button className="toolbar-icon-button" onClick={onStartGames} title="Learning games">
+                <Gamepad2 size={20} />
+              </button>
+            )}
             <button
               className={`toolbar-icon-button ${showOnlyStarred ? 'active' : ''}`}
               onClick={() => setShowOnlyStarred(!showOnlyStarred)}

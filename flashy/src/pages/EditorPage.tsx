@@ -2,11 +2,14 @@ import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { MarkdownEditor } from '../components/editor/MarkdownEditor';
 import { TiptapEditor } from '../components/editor/TiptapEditor';
+import { CollaborativeCanvas } from '../components/editor/CollaborativeCanvas';
 import { VersionHistory } from '../components/editor/VersionHistory';
 import { OnlineUsers } from '../components/editor/OnlineUsers';
 import { MouseCursors } from '../components/editor/MouseCursors';
 import { Logo } from '../components/Logo';
 import { StudyMode } from '../components/StudyMode';
+import { TutorMode } from '../components/TutorMode';
+import { LearnGames } from '../components/games/LearnGames';
 import { ModeSelector, EditorMode } from '../components/editor/ModeSelector';
 import { FlashcardSidebar, Flashcard } from '../components/FlashcardSidebar';
 import { ChatSidebar } from '../components/ChatSidebar';
@@ -41,6 +44,8 @@ export function EditorPage({ roomId }: EditorPageProps) {
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [isScrolled, setIsScrolled] = useState(false);
   const [showStudyMode, setShowStudyMode] = useState(false);
+  const [showTutorMode, setShowTutorMode] = useState(false);
+  const [showLearnGames, setShowLearnGames] = useState(false);
   // Three-panel layout: left sidebar (flashcards), center (editor), right sidebar (chat)
   const [leftSidebarWidth, setLeftSidebarWidth] = useState(MIN_PANEL_WIDTH);
   const [rightSidebarWidth, setRightSidebarWidth] = useState(MIN_PANEL_WIDTH);
@@ -260,7 +265,9 @@ export function EditorPage({ roomId }: EditorPageProps) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') {
         e.preventDefault();
-        const newMode = editorMode === 'wysiwyg' ? 'markdown' : 'wysiwyg';
+        const modes: EditorMode[] = ['markdown', 'wysiwyg', 'canvas'];
+        const currentIndex = modes.indexOf(editorMode);
+        const newMode = modes[(currentIndex + 1) % modes.length];
         handleModeChange(newMode);
       }
     };
@@ -445,6 +452,8 @@ export function EditorPage({ roomId }: EditorPageProps) {
           starredCards={starredCards}
           onToggleStar={toggleStar}
           onStartStudy={() => setShowStudyMode(true)}
+          onStartTutor={() => setShowTutorMode(true)}
+          onStartGames={() => setShowLearnGames(true)}
           isAnimating={isAnimatingLeft}
         />
       )}
@@ -497,6 +506,9 @@ export function EditorPage({ roomId }: EditorPageProps) {
         <div className={`editor-panel ${editorMode === 'markdown' ? 'active' : 'hidden'}`}>
           <MarkdownEditor scrollTarget={scrollTarget} isActive={editorMode === 'markdown'} />
         </div>
+        <div className={`editor-panel ${editorMode === 'canvas' ? 'active' : 'hidden'}`}>
+          <CollaborativeCanvas isActive={editorMode === 'canvas'} flashcards={flashcards} />
+        </div>
       </div>
 
       {/* Right Resize Handle / Collapse Toggle */}
@@ -540,6 +552,21 @@ export function EditorPage({ roomId }: EditorPageProps) {
           flashcards={flashcards}
           starredCards={starredCards}
           onClose={() => setShowStudyMode(false)}
+        />
+      )}
+
+      {showTutorMode && (
+        <TutorMode
+          flashcards={flashcards}
+          onClose={() => setShowTutorMode(false)}
+          roomId={roomId}
+        />
+      )}
+
+      {showLearnGames && flashcards.length >= 3 && (
+        <LearnGames
+          flashcards={flashcards}
+          onClose={() => setShowLearnGames(false)}
         />
       )}
     </div>
