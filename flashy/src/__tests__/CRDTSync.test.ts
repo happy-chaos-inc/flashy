@@ -401,3 +401,190 @@ describe('Send Request CRDT Coordination', () => {
     expect(request.size).toBe(0);
   });
 });
+
+// ─── Thread Presence via Awareness ──────────────────────────────────
+
+describe('Thread Presence via Awareness', () => {
+  it('should track which thread each peer is in', () => {
+    // Simulate awareness states from multiple peers
+    const awarenessStates = new Map<number, any>([
+      [1, { user: { name: 'Alice', color: '#FF0000' }, activeThread: 'default' }],
+      [2, { user: { name: 'Bob', color: '#00FF00' }, activeThread: 'thread-2' }],
+      [3, { user: { name: 'Charlie', color: '#0000FF' }, activeThread: 'default' }],
+    ]);
+
+    const myId = 1;
+    const presenceMap: Record<string, Array<{name: string; color: string}>> = {};
+
+    awarenessStates.forEach((state, clientId) => {
+      if (clientId === myId || !state.user?.name) return;
+      const threadId = state.activeThread || 'default';
+      if (!presenceMap[threadId]) presenceMap[threadId] = [];
+      presenceMap[threadId].push({ name: state.user.name, color: state.user.color });
+    });
+
+    expect(presenceMap['default']?.length).toBe(1);
+    expect(presenceMap['default']?.[0].name).toBe('Charlie');
+    expect(presenceMap['thread-2']?.length).toBe(1);
+    expect(presenceMap['thread-2']?.[0].name).toBe('Bob');
+  });
+
+  it('should handle all peers in the same thread', () => {
+    const awarenessStates = new Map<number, any>([
+      [1, { user: { name: 'Alice', color: '#FF0000' }, activeThread: 'default' }],
+      [2, { user: { name: 'Bob', color: '#00FF00' }, activeThread: 'default' }],
+      [3, { user: { name: 'Charlie', color: '#0000FF' }, activeThread: 'default' }],
+    ]);
+
+    const myId = 1;
+    const presenceMap: Record<string, Array<{name: string; color: string}>> = {};
+
+    awarenessStates.forEach((state, clientId) => {
+      if (clientId === myId || !state.user?.name) return;
+      const threadId = state.activeThread || 'default';
+      if (!presenceMap[threadId]) presenceMap[threadId] = [];
+      presenceMap[threadId].push({ name: state.user.name, color: state.user.color });
+    });
+
+    expect(presenceMap['default']?.length).toBe(2);
+  });
+
+  it('should track typing status per thread', () => {
+    const awarenessStates = new Map<number, any>([
+      [1, { user: { name: 'Alice' }, activeThread: 'default', chatTyping: null }],
+      [2, { user: { name: 'Bob' }, activeThread: 'default', chatTyping: 'default' }],
+      [3, { user: { name: 'Charlie' }, activeThread: 'thread-2', chatTyping: 'thread-2' }],
+    ]);
+
+    const myId = 1;
+    const typingMap: Record<string, string[]> = {};
+
+    awarenessStates.forEach((state, clientId) => {
+      if (clientId === myId || !state.user?.name) return;
+      if (state.chatTyping) {
+        if (!typingMap[state.chatTyping]) typingMap[state.chatTyping] = [];
+        typingMap[state.chatTyping].push(state.user.name);
+      }
+    });
+
+    expect(typingMap['default']?.length).toBe(1);
+    expect(typingMap['default']?.[0]).toBe('Bob');
+    expect(typingMap['thread-2']?.length).toBe(1);
+    expect(typingMap['thread-2']?.[0]).toBe('Charlie');
+  });
+
+  it('should handle no typing peers', () => {
+    const awarenessStates = new Map<number, any>([
+      [1, { user: { name: 'Alice' }, activeThread: 'default', chatTyping: null }],
+      [2, { user: { name: 'Bob' }, activeThread: 'default', chatTyping: null }],
+    ]);
+
+    const myId = 1;
+    const typingMap: Record<string, string[]> = {};
+
+    awarenessStates.forEach((state, clientId) => {
+      if (clientId === myId || !state.user?.name) return;
+      if (state.chatTyping) {
+        if (!typingMap[state.chatTyping]) typingMap[state.chatTyping] = [];
+        typingMap[state.chatTyping].push(state.user.name);
+      }
+    });
+
+    expect(Object.keys(typingMap).length).toBe(0);
+  });
+
+  it('should handle peer switching threads', () => {
+    // Simulate Bob switching from default to thread-2
+    const buildPresence = (states: Map<number, any>, myId: number) => {
+      const presenceMap: Record<string, Array<{name: string; color: string}>> = {};
+      states.forEach((state, clientId) => {
+        if (clientId === myId || !state.user?.name) return;
+        const threadId = state.activeThread || 'default';
+        if (!presenceMap[threadId]) presenceMap[threadId] = [];
+        presenceMap[threadId].push({ name: state.user.name, color: state.user.color || '#999' });
+      });
+      return presenceMap;
+    };
+
+    // Before switch
+    const statesBefore = new Map<number, any>([
+      [1, { user: { name: 'Alice' }, activeThread: 'default' }],
+      [2, { user: { name: 'Bob' }, activeThread: 'default' }],
+    ]);
+
+    let presence = buildPresence(statesBefore, 1);
+    expect(presence['default']?.length).toBe(1);
+    expect(presence['thread-2']).toBeUndefined();
+
+    // After Bob switches
+    const statesAfter = new Map<number, any>([
+      [1, { user: { name: 'Alice' }, activeThread: 'default' }],
+      [2, { user: { name: 'Bob' }, activeThread: 'thread-2' }],
+    ]);
+
+    presence = buildPresence(statesAfter, 1);
+    expect(presence['default']).toBeUndefined();
+    expect(presence['thread-2']?.length).toBe(1);
+    expect(presence['thread-2']?.[0].name).toBe('Bob');
+  });
+
+  it('should exclude self from presence dots', () => {
+    const states = new Map<number, any>([
+      [1, { user: { name: 'Alice' }, activeThread: 'default' }],
+      [2, { user: { name: 'Bob' }, activeThread: 'default' }],
+    ]);
+
+    const myId = 1;
+    const presenceMap: Record<string, Array<{name: string; color: string}>> = {};
+
+    states.forEach((state, clientId) => {
+      if (clientId === myId || !state.user?.name) return;
+      const threadId = state.activeThread || 'default';
+      if (!presenceMap[threadId]) presenceMap[threadId] = [];
+      presenceMap[threadId].push({ name: state.user.name, color: state.user.color || '#999' });
+    });
+
+    // Alice (self) should NOT appear in presence
+    expect(presenceMap['default']?.length).toBe(1);
+    expect(presenceMap['default']?.find(p => p.name === 'Alice')).toBeUndefined();
+    expect(presenceMap['default']?.[0].name).toBe('Bob');
+  });
+
+  it('should cap visible presence dots at 3 with overflow count', () => {
+    const peers = [
+      { name: 'Bob', color: '#00FF00' },
+      { name: 'Charlie', color: '#0000FF' },
+      { name: 'Diana', color: '#FF00FF' },
+      { name: 'Eve', color: '#FFFF00' },
+      { name: 'Frank', color: '#00FFFF' },
+    ];
+
+    const visible = peers.slice(0, 3);
+    const overflowCount = peers.length - 3;
+
+    expect(visible.length).toBe(3);
+    expect(overflowCount).toBe(2);
+    expect(visible[0].name).toBe('Bob');
+  });
+
+  it('should default to "default" thread for peers without activeThread', () => {
+    const states = new Map<number, any>([
+      [1, { user: { name: 'Alice' }, activeThread: 'default' }],
+      [2, { user: { name: 'Bob' } }], // No activeThread set
+    ]);
+
+    const myId = 1;
+    const presenceMap: Record<string, Array<{name: string; color: string}>> = {};
+
+    states.forEach((state, clientId) => {
+      if (clientId === myId || !state.user?.name) return;
+      const threadId = state.activeThread || 'default';
+      if (!presenceMap[threadId]) presenceMap[threadId] = [];
+      presenceMap[threadId].push({ name: state.user.name, color: state.user.color || '#999' });
+    });
+
+    // Bob should appear in default thread
+    expect(presenceMap['default']?.length).toBe(1);
+    expect(presenceMap['default']?.[0].name).toBe('Bob');
+  });
+});

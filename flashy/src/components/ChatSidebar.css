@@ -827,3 +827,113 @@
 .chat-embedding-status.pending {
   color: #9ca3af;
 }
+
+/* Thread presence dots */
+.chat-thread-presence {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+}
+
+.chat-thread-presence-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid white;
+  flex-shrink: 0;
+  margin-left: -3px;
+}
+
+.chat-thread-presence-dot:first-child {
+  margin-left: 0;
+}
+
+.chat-thread-tab.active .chat-thread-presence-dot {
+  border-color: #B399D4;
+}
+
+.chat-thread-presence-more {
+  font-size: 9px;
+  font-weight: 600;
+  color: #9ca3af;
+  margin-left: 2px;
+}
+
+.chat-thread-tab.active .chat-thread-presence-more {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Typing indicator (dots animation) */
+.chat-thread-typing {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+}
+
+.typing-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #9ca3af;
+  animation: typingBounce 1.2s ease-in-out infinite;
+}
+
+.chat-thread-tab.active .typing-dot {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typingBounce {
+  0%, 80%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* Typing indicator in messages area */
+.chat-typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.chat-typing-dots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 12px;
+  background: #f3f4f6;
+  border-radius: 12px;
+}
+
+.chat-typing-dots .typing-dot {
+  width: 6px;
+  height: 6px;
+  background: #B399D4;
+}
+
+.chat-typing-text {
+  font-size: 12px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

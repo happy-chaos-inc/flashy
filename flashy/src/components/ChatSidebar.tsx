@@ -162,6 +162,11 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
   const [activeThreadId, setActiveThreadId] = useState('default');
   const [hasRagChunks, setHasRagChunks] = useState(false);
 
+  // Per-thread presence: map of threadId -> array of {name, color} of peers in that thread
+  const [threadPresence, setThreadPresence] = useState<Record<string, Array<{name: string; color: string}>>>({});
+  // Typing indicators: map of threadId -> array of peer names currently typing
+  const [threadTyping, setThreadTyping] = useState<Record<string, string[]>>({});
+
   // API settings (stored in localStorage)
   const [userApiKey, setUserApiKey] = useState<string>(() =>
     localStorage.getItem('flashy_api_key') || ''
@@ -383,6 +388,7 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
         const { provider } = await collaborationManager.connect();
         providerRef.current = provider;
         clientIdRef.current = provider.awareness.clientID;
+        provider.awareness.setLocalStateField('activeThread', 'default');
 
         const yText = collaborationManager.getChatPrompt();
         const yArray = collaborationManager.getChatMessages();
@@ -553,6 +559,42 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
         };
         ySendRequest.observe(sendRequestObserver);
 
+        // Track per-thread presence from awareness
+        const updateThreadPresence = () => {
+          const states = provider.awareness.getStates();
+          const myId = provider.awareness.clientID;
+          const presenceMap: Record<string, Array<{name: string; color: string}>> = {};
+          const typingMap: Record<string, string[]> = {};
+
+          states.forEach((state: any, clientId: number) => {
+            if (!state.user?.name) return;
+            const threadId = state.activeThread || 'default';
+            const userName = state.user.name;
+            const userColor = state.user.color || '#999';
+
+            // Skip self for presence dots (you know where you are)
+            if (clientId !== myId) {
+              if (!presenceMap[threadId]) presenceMap[threadId] = [];
+              presenceMap[threadId].push({ name: userName, color: userColor });
+            }
+
+            // Track typing (include self for UI feedback)
+            if (state.chatTyping) {
+              const typingThread = state.chatTyping;
+              if (clientId !== myId) {
+                if (!typingMap[typingThread]) typingMap[typingThread] = [];
+                typingMap[typingThread].push(userName);
+              }
+            }
+          });
+
+          setThreadPresence(presenceMap);
+          setThreadTyping(typingMap);
+        };
+
+        updateThreadPresence();
+        provider.awareness.on('change', updateThreadPresence);
+
         // Leader election: lowest clientID is the leader
         const updateLeaderStatus = () => {
           const states = provider.awareness.getStates();
@@ -609,6 +651,7 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
           yArray.unobserve(arrayObserver);
           yAttachmentsMeta.unobserve(attachmentsMetaObserver);
           ySendRequest.unobserve(sendRequestObserver);
+          provider.awareness.off('change', updateThreadPresence);
           provider.awareness.off('change', updateLeaderStatus);
           provider.awareness.off('change', cleanupDisconnectedAttachments);
           collaborationManager.disconnect();
@@ -628,6 +671,14 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
   useEffect(() => {
     // Skip if Yjs not ready yet (initial setup handles default thread)
     if (!yArrayRef.current && activeThreadId === 'default') return;
+
+    // Broadcast active thread to all peers via awareness
+    (async () => {
+      try {
+        const { provider } = await collaborationManager.connect();
+        provider.awareness.setLocalStateField('activeThread', activeThreadId);
+      } catch {}
+    })();
 
     let textObs: (() => void) | null = null;
     let arrayObs: (() => void) | null = null;
@@ -714,6 +765,18 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
         yText.delete(0, oldValue.length);
         yText.insert(0, newValue);
       });
+
+      // Broadcast typing status
+      if (providerRef.current) {
+        providerRef.current.awareness.setLocalStateField('chatTyping', activeThreadId);
+        // Clear typing after 2 seconds of no typing
+        if ((window as any).__typingTimeout) clearTimeout((window as any).__typingTimeout);
+        (window as any).__typingTimeout = setTimeout(() => {
+          if (providerRef.current) {
+            providerRef.current.awareness.setLocalStateField('chatTyping', null);
+          }
+        }, 2000);
+      }
     }
   };
 
@@ -1068,6 +1131,28 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
           >
             <MessageSquare size={12} />
             <span>{thread.name}</span>
+            {threadPresence[thread.id] && threadPresence[thread.id].length > 0 && (
+              <span className="chat-thread-presence">
+                {threadPresence[thread.id].slice(0, 3).map((peer, i) => (
+                  <span
+                    key={i}
+                    className="chat-thread-presence-dot"
+                    style={{ backgroundColor: peer.color }}
+                    title={peer.name}
+                  />
+                ))}
+                {threadPresence[thread.id].length > 3 && (
+                  <span className="chat-thread-presence-more">+{threadPresence[thread.id].length - 3}</span>
+                )}
+              </span>
+            )}
+            {threadTyping[thread.id] && threadTyping[thread.id].length > 0 && (
+              <span className="chat-thread-typing" title={`${threadTyping[thread.id].join(', ')} typing...`}>
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+              </span>
+            )}
             {thread.id !== 'default' && (
               <button
                 className="chat-thread-close"
@@ -1237,6 +1322,18 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
             </div>
           </div>
         )}
+              {threadTyping[activeThreadId] && threadTyping[activeThreadId].length > 0 && (
+                <div className="chat-typing-indicator">
+                  <span className="chat-typing-dots">
+                    <span className="typing-dot" />
+                    <span className="typing-dot" />
+                    <span className="typing-dot" />
+                  </span>
+                  <span className="chat-typing-text">
+                    {threadTyping[activeThreadId].join(', ')} {threadTyping[activeThreadId].length === 1 ? 'is' : 'are'} typing...
+                  </span>
+                </div>
+              )}
         <div ref={messagesEndRef} />
       </div>
 
