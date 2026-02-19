@@ -998,7 +998,12 @@
   transition: left 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.resize-handle-left:hover:not(:has(.resize-toggle-button:hover)) .resize-stick {
+.resize-handle-left.collapsed {
+  left: 8px !important;
+  cursor: default;
+}
+
+.resize-handle-left:hover:not(:has(.resize-toggle-button:hover)):not(.collapsed) .resize-stick {
   background: linear-gradient(to bottom, transparent, #B399D4 20%, #B399D4 80%, transparent);
   transform: scaleX(2);
 }
@@ -1023,7 +1028,12 @@
   transition: right 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.resize-handle-right:hover:not(:has(.resize-toggle-button:hover)) .resize-stick {
+.resize-handle-right.collapsed {
+  right: 8px !important;
+  cursor: default;
+}
+
+.resize-handle-right:hover:not(:has(.resize-toggle-button:hover)):not(.collapsed) .resize-stick {
   background: linear-gradient(to bottom, transparent, #B399D4 20%, #B399D4 80%, transparent);
   transform: scaleX(2);
 }
@@ -1060,4 +1070,44 @@
 
 .editor-panel.hidden {
   display: none;
+}
+
+/* Scroll to top / bottom buttons */
+.editor-scroll-btn {
+  position: absolute;
+  right: 12px;
+  z-index: 50;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1.5px solid #e5e7eb;
+  background: white;
+  color: #9ca3af;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.editor-content:hover .editor-scroll-btn {
+  opacity: 1;
+}
+
+.editor-scroll-btn:hover {
+  background: #f9fafb;
+  border-color: #B399D4;
+  color: #B399D4;
+  box-shadow: 0 4px 12px rgba(179, 153, 212, 0.2);
+  transform: scale(1.1);
+}
+
+.editor-scroll-top {
+  top: 72px;
+}
+
+.editor-scroll-bottom {
+  bottom: 12px;
 }

@@ -94,6 +94,7 @@ export function TiptapEditor({ scrollTarget, isActive = true }: TiptapEditorProp
     const init = async () => {
       try {
         const { ydoc, provider } = await collaborationManager.connect();
+        await collaborationManager.waitForDatabaseSync();
 
         logger.log('📊 TiptapEditor: Connected to Y.XmlFragment');
 

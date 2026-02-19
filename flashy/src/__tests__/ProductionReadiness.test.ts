@@ -555,8 +555,8 @@ describe('CI/CD Pipeline', () => {
     expect(workflowContent).toContain('test:');
   });
 
-  it('should use Node.js 18', () => {
-    expect(workflowContent).toContain("node-version: '18'");
+  it('should use Node.js 18 and 20 matrix', () => {
+    expect(workflowContent).toContain('node-version: [18, 20]');
   });
 
   it('should have environment secrets configured', () => {

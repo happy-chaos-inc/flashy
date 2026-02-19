@@ -10,11 +10,12 @@ import { StudyMode } from '../components/StudyMode';
 import { ModeSelector, EditorMode } from '../components/editor/ModeSelector';
 import { FlashcardSidebar, Flashcard } from '../components/FlashcardSidebar';
 import { ChatSidebar } from '../components/ChatSidebar';
+import { SearchBar } from '../components/SearchBar';
 import { collaborationManager } from '../lib/CollaborationManager';
 import { prosemirrorToMarkdown } from '../lib/prosemirrorToMarkdown';
 import { logger } from '../lib/logger';
-import { useEffect, useState } from 'react';
-import { LogOut, ChevronLeft, ChevronRight, Share2, Check } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { LogOut, ChevronLeft, ChevronRight, Share2, Check, ChevronsUp, ChevronsDown } from 'lucide-react';
 import './EditorPage.css';
 
 // Type for user info from OnlineUsers
@@ -41,8 +42,10 @@ export function EditorPage({ roomId }: EditorPageProps) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [showStudyMode, setShowStudyMode] = useState(false);
   // Three-panel layout: left sidebar (flashcards), center (editor), right sidebar (chat)
-  const [leftSidebarWidth, setLeftSidebarWidth] = useState(280);
-  const [rightSidebarWidth, setRightSidebarWidth] = useState(320);
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(MIN_PANEL_WIDTH);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(MIN_PANEL_WIDTH);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
   const [isDraggingLeft, setIsDraggingLeft] = useState(false);
   const [isDraggingRight, setIsDraggingRight] = useState(false);
   const [isAnimatingLeft, setIsAnimatingLeft] = useState(false);
@@ -333,6 +336,19 @@ export function EditorPage({ roomId }: EditorPageProps) {
     init();
   }, [editorMode, roomId]);
 
+  const getActiveScrollElement = useCallback((): Element | null => {
+    if (editorMode === 'markdown') {
+      return document.querySelector('.editor-panel.active .cm-scroller');
+    }
+    return document.querySelector('.editor-panel.active .tiptap-editor');
+  }, [editorMode]);
+
+  const scrollEditor = useCallback((direction: 'top' | 'bottom') => {
+    const el = getActiveScrollElement();
+    if (!el) return;
+    el.scrollTo({ top: direction === 'top' ? 0 : el.scrollHeight, behavior: 'smooth' });
+  }, [getActiveScrollElement]);
+
   // Show "party full" message if room is at capacity
   if (isRoomFull) {
     return (
@@ -396,8 +412,8 @@ export function EditorPage({ roomId }: EditorPageProps) {
 
   return (
     <div className="editor-page" style={{
-      '--left-sidebar-width': `${leftSidebarWidth}px`,
-      '--right-sidebar-width': `${rightSidebarWidth}px`,
+      '--left-sidebar-width': leftCollapsed ? '0px' : `${leftSidebarWidth}px`,
+      '--right-sidebar-width': rightCollapsed ? '0px' : `${rightSidebarWidth}px`,
       '--min-panel-width': `${MIN_PANEL_WIDTH}px`,
       '--margin-left': `${MARGIN_LEFT}px`,
       '--margin-gap': `${MARGIN_GAP}px`
@@ -408,6 +424,7 @@ export function EditorPage({ roomId }: EditorPageProps) {
           <Logo size={40} />
           <h1 className="editor-title">Flashy</h1>
         </div>
+        <SearchBar roomId={roomId} />
         <div className="header-actions">
           <OnlineUsers onUserClick={handleUserClick} />
           <button onClick={handleShare} className="share-button" title="Copy room link">
@@ -422,36 +439,33 @@ export function EditorPage({ roomId }: EditorPageProps) {
       </div>
 
       {/* Left Sidebar - Flashcards */}
-      <FlashcardSidebar
-        flashcards={flashcards}
-        starredCards={starredCards}
-        onToggleStar={toggleStar}
-        onStartStudy={() => setShowStudyMode(true)}
-        isAnimating={isAnimatingLeft}
-      />
+      {!leftCollapsed && (
+        <FlashcardSidebar
+          flashcards={flashcards}
+          starredCards={starredCards}
+          onToggleStar={toggleStar}
+          onStartStudy={() => setShowStudyMode(true)}
+          isAnimating={isAnimatingLeft}
+        />
+      )}
 
-      {/* Left Resize Handle */}
+      {/* Left Resize Handle / Collapse Toggle */}
       <div
-        className={`resize-handle-left ${isAnimatingLeft ? 'animating' : ''}`}
-        style={{ left: `calc(var(--left-sidebar-width) + var(--margin-left) + var(--margin-gap) / 2 - 24px)` }}
-        onMouseDown={handleLeftMouseDown}
+        className={`resize-handle-left ${isAnimatingLeft ? 'animating' : ''} ${leftCollapsed ? 'collapsed' : ''}`}
+        style={{ left: leftCollapsed ? '0px' : `calc(var(--left-sidebar-width) + var(--margin-left) + var(--margin-gap) / 2 - 24px)` }}
+        onMouseDown={leftCollapsed ? undefined : handleLeftMouseDown}
       >
-        <div className={`resize-stick ${isAnimatingLeft ? 'animating' : ''}`} />
+        {!leftCollapsed && <div className={`resize-stick ${isAnimatingLeft ? 'animating' : ''}`} />}
         <button
           className={`resize-toggle-button ${isAnimatingLeft ? 'animating' : ''}`}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
-            const maxWidth = window.innerWidth - (rightSidebarWidth + MIN_PANEL_WIDTH + MARGIN_GAP * 2 + MARGIN_LEFT * 2);
             setIsAnimatingLeft(true);
-            if (leftSidebarWidth >= maxWidth - 5) {
-              setLeftSidebarWidth(MIN_PANEL_WIDTH);
-            } else {
-              setLeftSidebarWidth(maxWidth);
-            }
+            setLeftCollapsed(!leftCollapsed);
             setTimeout(() => setIsAnimatingLeft(false), 500);
           }}
-          title="Toggle flashcard sidebar"
+          title={leftCollapsed ? "Show flashcards" : "Hide flashcards"}
         >
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width={32} height={32} viewBox="0 0 55 55" xmlns="http://www.w3.org/2000/svg">
@@ -460,9 +474,7 @@ export function EditorPage({ roomId }: EditorPageProps) {
               </g>
             </svg>
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white' }}>
-              {leftSidebarWidth >= window.innerWidth - (rightSidebarWidth + MIN_PANEL_WIDTH + MARGIN_GAP * 2 + MARGIN_LEFT * 2) - 5
-                ? <ChevronLeft size={14} />
-                : <ChevronRight size={14} />}
+              {leftCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
             </div>
           </div>
         </button>
@@ -473,6 +485,12 @@ export function EditorPage({ roomId }: EditorPageProps) {
         <div className="mode-selector-overlay">
           <ModeSelector currentMode={editorMode} onModeChange={handleModeChange} />
         </div>
+        <button className="editor-scroll-btn editor-scroll-top" onClick={() => scrollEditor('top')} title="Scroll to top">
+          <ChevronsUp size={18} />
+        </button>
+        <button className="editor-scroll-btn editor-scroll-bottom" onClick={() => scrollEditor('bottom')} title="Scroll to bottom">
+          <ChevronsDown size={18} />
+        </button>
         <div className={`editor-panel ${editorMode === 'wysiwyg' ? 'active' : 'hidden'}`}>
           <TiptapEditor scrollTarget={scrollTarget} isActive={editorMode === 'wysiwyg'} />
         </div>
@@ -481,28 +499,23 @@ export function EditorPage({ roomId }: EditorPageProps) {
         </div>
       </div>
 
-      {/* Right Resize Handle */}
+      {/* Right Resize Handle / Collapse Toggle */}
       <div
-        className={`resize-handle-right ${isAnimatingRight ? 'animating' : ''}`}
-        style={{ right: `calc(var(--right-sidebar-width) + var(--margin-left) + var(--margin-gap) / 2 - 24px)` }}
-        onMouseDown={handleRightMouseDown}
+        className={`resize-handle-right ${isAnimatingRight ? 'animating' : ''} ${rightCollapsed ? 'collapsed' : ''}`}
+        style={{ right: rightCollapsed ? '0px' : `calc(var(--right-sidebar-width) + var(--margin-left) + var(--margin-gap) / 2 - 24px)` }}
+        onMouseDown={rightCollapsed ? undefined : handleRightMouseDown}
       >
-        <div className={`resize-stick ${isAnimatingRight ? 'animating' : ''}`} />
+        {!rightCollapsed && <div className={`resize-stick ${isAnimatingRight ? 'animating' : ''}`} />}
         <button
           className={`resize-toggle-button ${isAnimatingRight ? 'animating' : ''}`}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
-            const maxWidth = window.innerWidth - (leftSidebarWidth + MIN_PANEL_WIDTH + MARGIN_GAP * 2 + MARGIN_LEFT * 2);
             setIsAnimatingRight(true);
-            if (rightSidebarWidth >= maxWidth - 5) {
-              setRightSidebarWidth(MIN_PANEL_WIDTH);
-            } else {
-              setRightSidebarWidth(maxWidth);
-            }
+            setRightCollapsed(!rightCollapsed);
             setTimeout(() => setIsAnimatingRight(false), 500);
           }}
-          title="Toggle chat sidebar"
+          title={rightCollapsed ? "Show AI chat" : "Hide AI chat"}
         >
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width={32} height={32} viewBox="0 0 55 55" xmlns="http://www.w3.org/2000/svg">
@@ -511,16 +524,16 @@ export function EditorPage({ roomId }: EditorPageProps) {
               </g>
             </svg>
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white' }}>
-              {rightSidebarWidth >= window.innerWidth - (leftSidebarWidth + MIN_PANEL_WIDTH + MARGIN_GAP * 2 + MARGIN_LEFT * 2) - 5
-                ? <ChevronRight size={14} />
-                : <ChevronLeft size={14} />}
+              {rightCollapsed ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
             </div>
           </div>
         </button>
       </div>
 
       {/* Right Sidebar - Chat */}
-      <ChatSidebar isAnimating={isAnimatingRight} roomId={roomId} />
+      {!rightCollapsed && (
+        <ChatSidebar isAnimating={isAnimatingRight} roomId={roomId} />
+      )}
 
       {showStudyMode && flashcards.length > 0 && (
         <StudyMode

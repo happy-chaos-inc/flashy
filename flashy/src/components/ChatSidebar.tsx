@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Send, Trash2, Bot, User, Loader2, Settings, X, Key, Paperclip, FileText, Sparkles, Lightbulb, HelpCircle, Upload, ChevronDown } from 'lucide-react';
-import { collaborationManager, ChatMessage, SharedAttachmentMeta } from '../lib/CollaborationManager';
+import { Send, Trash2, Bot, User, Loader2, Settings, X, Key, Paperclip, FileText, Sparkles, Lightbulb, HelpCircle, Upload, ChevronDown, Plus, MessageSquare } from 'lucide-react';
+import { collaborationManager, ChatMessage, SharedAttachmentMeta, ChatThread } from '../lib/CollaborationManager';
 import { prosemirrorToMarkdown } from '../lib/prosemirrorToMarkdown';
 import { logger } from '../lib/logger';
 import { supabase } from '../config/supabase';
@@ -158,6 +158,9 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
   const [attachments, setAttachments] = useState<AttachedFile[]>([]); // Local files in this browser
   const [sharedAttachmentsMeta, setSharedAttachmentsMeta] = useState<SharedAttachmentMeta[]>([]); // All attachments from all peers
   const [isDragOver, setIsDragOver] = useState(false);
+  const [threads, setThreads] = useState<ChatThread[]>([{ id: 'default', name: 'Chat', createdAt: Date.now() }]);
+  const [activeThreadId, setActiveThreadId] = useState('default');
+  const [hasRagChunks, setHasRagChunks] = useState(false);
 
   // API settings (stored in localStorage)
   const [userApiKey, setUserApiKey] = useState<string>(() =>
@@ -188,6 +191,7 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
   const pendingFilesRef = useRef<Map<string, PendingFileData>>(new Map());
   const localFilesRef = useRef<Map<string, { file: File; processed: ImageAttachment | null; extractedText: string }>>(new Map());
   const dragCounterRef = useRef(0);
+  const yThreadsRef = useRef<import('yjs').Map<any> | null>(null);
 
   // Keep refs in sync with state so the Y.js observer (set up once) always reads current values
   const userApiKeyRef = useRef(userApiKey);
@@ -282,6 +286,7 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
         provider: currentProvider,
         model: currentModel,
         roomId: roomId,
+        ragEnabled: true,
       };
 
       // Include resized images if any
@@ -394,6 +399,31 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
         yAttachmentsMetaRef.current = yAttachmentsMeta;
         ySendRequestRef.current = ySendRequest;
 
+        const yThreads = collaborationManager.getChatThreads();
+        yThreadsRef.current = yThreads;
+
+        // Initialize threads from Yjs
+        if (yThreads) {
+          const existingThreads: ChatThread[] = [{ id: 'default', name: 'Chat', createdAt: 0 }];
+          yThreads.forEach((value: any, key: string) => {
+            if (key !== 'default') {
+              existingThreads.push({ id: key, name: value.name || key, createdAt: value.createdAt || 0 });
+            }
+          });
+          setThreads(existingThreads);
+
+          const threadsObserver = () => {
+            const updated: ChatThread[] = [{ id: 'default', name: 'Chat', createdAt: 0 }];
+            yThreads.forEach((value: any, key: string) => {
+              if (key !== 'default') {
+                updated.push({ id: key, name: value.name || key, createdAt: value.createdAt || 0 });
+              }
+            });
+            setThreads(updated);
+          };
+          yThreads.observe(threadsObserver);
+        }
+
         // Initialize prompt from Y.Text
         setPrompt(yText.toString());
 
@@ -442,7 +472,9 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
 
         // Observe shared attachments meta changes
         const attachmentsMetaObserver = () => {
-          setSharedAttachmentsMeta(yAttachmentsMeta.toArray());
+          const newMeta = yAttachmentsMeta.toArray();
+          setSharedAttachmentsMeta(newMeta);
+          setHasRagChunks(newMeta.some(m => m.embeddingStatus === 'ready'));
         };
         yAttachmentsMeta.observe(attachmentsMetaObserver);
 
@@ -592,6 +624,82 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Switch Yjs bindings when active thread changes
+  useEffect(() => {
+    // Skip if Yjs not ready yet (initial setup handles default thread)
+    if (!yArrayRef.current && activeThreadId === 'default') return;
+
+    let textObs: (() => void) | null = null;
+    let arrayObs: (() => void) | null = null;
+
+    (async () => {
+      try {
+        const { provider } = await collaborationManager.connect();
+
+        // Get per-thread Yjs structures (default thread uses original keys for backward compat)
+        const yText = activeThreadId === 'default'
+          ? collaborationManager.getChatPrompt()
+          : collaborationManager.getChatThreadPrompt(activeThreadId);
+        const yArray = activeThreadId === 'default'
+          ? collaborationManager.getChatMessages()
+          : collaborationManager.getChatThreadMessages(activeThreadId);
+        const ySendRequest = activeThreadId === 'default'
+          ? collaborationManager.getSendRequest()
+          : collaborationManager.getThreadSendRequest(activeThreadId);
+
+        if (!yText || !yArray || !ySendRequest) return;
+
+        // Update refs so handleSend/handleLeaderResponse use the right structures
+        yTextRef.current = yText;
+        yArrayRef.current = yArray;
+        ySendRequestRef.current = ySendRequest;
+
+        // Load current state
+        setPrompt(yText.toString());
+        setMessages(yArray.toArray());
+
+        // Observe text
+        textObs = () => setPrompt(yText.toString());
+        yText.observe(textObs);
+
+        // Observe messages with leader election
+        arrayObs = () => {
+          const newMessages = yArray.toArray();
+          setMessages(newMessages);
+
+          if (newMessages.length > 0) {
+            const lastMsg = newMessages[newMessages.length - 1];
+            const hasAttachments = lastMsg.content.includes('[Attached:');
+            if (lastMsg.role === 'user' && !hasAttachments && !isSendingRef.current && !respondedMessagesRef.current.has(lastMsg.id)) {
+              const states = provider.awareness.getStates();
+              const clientIds = Array.from(states.keys());
+              const myId = provider.awareness.clientID;
+              if (!clientIds.includes(myId)) clientIds.push(myId);
+              const leader = Math.min(...clientIds);
+              if (myId === leader) {
+                setTimeout(() => handleLeaderResponse(lastMsg, yArray), 100);
+              }
+            }
+          }
+        };
+        yArray.observe(arrayObs);
+      } catch (err) {
+        logger.error('Failed to switch thread:', err);
+      }
+    })();
+
+    return () => {
+      // Clean up previous thread observers
+      if (textObs && yTextRef.current) {
+        try { yTextRef.current.unobserve(textObs); } catch {}
+      }
+      if (arrayObs && yArrayRef.current) {
+        try { yArrayRef.current.unobserve(arrayObs); } catch {}
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeThreadId]);
+
   // Handle prompt input change
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
@@ -679,6 +787,33 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
           ownerName: userInfo.name,
         };
         yAttachmentsMeta.push([meta]);
+
+        // Trigger embedding for text-based files
+        if (extractedText.trim()) {
+          // Update embedding status to processing
+          const metaArr = yAttachmentsMeta.toArray();
+          const metaIdx = metaArr.findIndex(m => m.id === fileId);
+          if (metaIdx !== -1) {
+            yAttachmentsMeta.delete(metaIdx, 1);
+            yAttachmentsMeta.insert(metaIdx, [{ ...meta, embeddingStatus: 'processing' as const }]);
+          }
+
+          // Call embed function (non-blocking)
+          supabase.functions.invoke('embed', {
+            body: { room_id: roomId, file_name: file.name, text_content: extractedText, file_id: fileId },
+          }).then(({ error: embedError }) => {
+            const metaArr2 = yAttachmentsMeta.toArray();
+            const metaIdx2 = metaArr2.findIndex(m => m.id === fileId);
+            if (metaIdx2 !== -1) {
+              const newStatus = embedError ? 'error' : 'ready';
+              yAttachmentsMeta.delete(metaIdx2, 1);
+              yAttachmentsMeta.insert(metaIdx2, [{ ...metaArr2[metaIdx2], embeddingStatus: newStatus as any }]);
+              if (!embedError) setHasRagChunks(true);
+            }
+          }).catch(() => {
+            // Non-blocking: embedding failure doesn't block chat
+          });
+        }
       }
     }
 
@@ -923,6 +1058,55 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
         </div>
       </div>
 
+      {/* Thread Tabs */}
+      <div className="chat-thread-tabs">
+        {threads.map((thread) => (
+          <div
+            key={thread.id}
+            className={`chat-thread-tab ${thread.id === activeThreadId ? 'active' : ''}`}
+            onClick={() => setActiveThreadId(thread.id)}
+          >
+            <MessageSquare size={12} />
+            <span>{thread.name}</span>
+            {thread.id !== 'default' && (
+              <button
+                className="chat-thread-close"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Remove thread
+                  setThreads(prev => prev.filter(t => t.id !== thread.id));
+                  if (activeThreadId === thread.id) setActiveThreadId('default');
+                  if (yThreadsRef.current) yThreadsRef.current.delete(thread.id);
+                }}
+              >
+                <X size={10} />
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          className="chat-thread-add"
+          onClick={() => {
+            const newId = `thread-${Date.now()}`;
+            const newThread: ChatThread = {
+              id: newId,
+              name: `Chat ${threads.length + 1}`,
+              createdAt: Date.now(),
+            };
+            setThreads(prev => [...prev, newThread]);
+            setActiveThreadId(newId);
+
+            // Sync to Yjs
+            if (yThreadsRef.current) {
+              yThreadsRef.current.set(newId, { name: newThread.name, createdAt: newThread.createdAt });
+            }
+          }}
+          title="New chat thread"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+
       {/* Settings Panel */}
       {showSettings && (
         <div className="chat-settings-panel">
@@ -1083,6 +1267,13 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
                       {meta.name}
                       {!isOwn && <span className="chat-attachment-owner"> ({meta.ownerName})</span>}
                     </span>
+                    {meta.embeddingStatus && (
+                      <span className={`chat-embedding-status ${meta.embeddingStatus}`}>
+                        {meta.embeddingStatus === 'processing' && <Loader2 size={10} className="spinning" />}
+                        {meta.embeddingStatus === 'ready' && <Sparkles size={10} />}
+                        {meta.embeddingStatus === 'error' && <X size={10} />}
+                      </span>
+                    )}
                     {isOwn && (
                       <button
                         className="chat-attachment-chip-remove"

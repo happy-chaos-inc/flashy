@@ -33,6 +33,7 @@ interface RequestBody {
   roomId?: string
   // Image attachments (base64-encoded, for the latest user message)
   imageAttachments?: ImageAttachment[]
+  ragEnabled?: boolean
 }
 
 // Model configurations
@@ -141,6 +142,29 @@ async function callAnthropic(apiKey: string, model: string, systemPrompt: string
   return data.content?.[0]?.text || 'No response generated'
 }
 
+// Embed a query for RAG retrieval
+async function embedQuery(text: string, apiKey: string): Promise<number[]> {
+  const response = await fetch('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'text-embedding-3-small',
+      input: text,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(`Embeddings error: ${error.error?.message || 'failed'}`)
+  }
+
+  const data = await response.json()
+  return data.data[0].embedding
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -176,7 +200,8 @@ serve(async (req) => {
       provider = 'openai',
       model = 'gpt-4o-mini',
       roomId = 'default',
-      imageAttachments
+      imageAttachments,
+      ragEnabled
     } = reqBody
 
     if (!messages || !Array.isArray(messages)) {
@@ -234,12 +259,15 @@ The ONLY exception: when the user says "generate flashcards", "make flashcards",
 - # Header 1 = group/chapter name (e.g., # Chapter 4)
 - ## Header 2 = flashcard term (the front of the card)
 - Plain text under ## = flashcard description (the back of the card)
+Always wrap flashcard output in a markdown code block (triple backticks with "markdown" language tag) so the user can copy and paste it into the editor.
 Example:
+\`\`\`markdown
 # Mitosis
 ## Prophase
 Chromosomes condense and become visible. Nuclear envelope begins to break down.
 ## Metaphase
 Chromosomes align at the cell's equator.
+\`\`\`
 If the user asks about a file, explains a concept, asks a question, or says "tell me about", respond in plain text.`
 
     if (documentContent && documentContent.trim()) {
@@ -259,6 +287,51 @@ ${truncatedContent}
 \`\`\`
 
 Use this context to provide relevant, helpful responses.`
+    }
+
+    // RAG: Retrieve relevant document chunks if available
+    let ragContext = ''
+    try {
+      // Get the latest user message text for the query
+      const lastUserMsg = messages.slice().reverse().find(m => m.role === 'user')
+      const queryText = typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : ''
+
+      if (queryText && (ragEnabled || true)) {
+        // Check if room has any chunks
+        const { count } = await supabase
+          .from('document_chunks')
+          .select('*', { count: 'exact', head: true })
+          .eq('room_id', roomId)
+
+        if (count && count > 0) {
+          const openaiKeyForEmbed = Deno.env.get('OPENAI_API_KEY')
+          if (openaiKeyForEmbed) {
+            const queryEmbedding = await embedQuery(queryText, openaiKeyForEmbed)
+
+            const { data: ragResults } = await supabase.rpc('hybrid_search', {
+              query_embedding: `[${queryEmbedding.join(',')}]`,
+              query_text: queryText,
+              p_room_id: roomId,
+              match_count: 3,
+            })
+
+            if (ragResults && ragResults.length > 0) {
+              ragContext = '\n\n## Relevant Document Chunks (from uploaded files)\n\n'
+              ragResults.forEach((r: any, i: number) => {
+                ragContext += `### From "${r.file_name}" (chunk ${r.chunk_index + 1})\n${r.text_content}\n\n`
+              })
+              console.log(`RAG: Found ${ragResults.length} relevant chunks for room ${roomId}`)
+            }
+          }
+        }
+      }
+    } catch (ragError) {
+      // Non-blocking: if RAG fails, chat works normally
+      console.error('RAG retrieval failed (non-blocking):', ragError)
+    }
+
+    if (ragContext) {
+      systemPrompt += ragContext
     }
 
     // Call the appropriate API

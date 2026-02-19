@@ -23,6 +23,16 @@ export interface SharedAttachmentMeta {
   mimeType: string;
   ownerId: number;  // clientID of the peer who has this file
   ownerName: string;
+  embeddingStatus?: 'pending' | 'processing' | 'ready' | 'error';
+}
+
+// Chat thread metadata for multi-chat support
+export interface ChatThread {
+  id: string;
+  name: string;
+  model?: string;
+  provider?: 'openai' | 'anthropic';
+  createdAt: number;
 }
 
 // Send request - when someone presses Enter, this triggers the peer with files to send
@@ -356,6 +366,40 @@ class CollaborationManager {
   getSendRequest(): import('yjs').Map<any> | null {
     if (!this.ydoc) return null;
     return this.ydoc.getMap('chat-send-request');
+  }
+
+  /**
+   * Get the chat threads Y.Map
+   * Stores thread metadata for multi-chat support
+   */
+  getChatThreads(): import('yjs').Map<any> | null {
+    if (!this.ydoc) return null;
+    return this.ydoc.getMap('chat-threads');
+  }
+
+  /**
+   * Get chat messages for a specific thread
+   * Each thread has its own Y.Array for independent message history
+   */
+  getChatThreadMessages(threadId: string): YArray<ChatMessage> | null {
+    if (!this.ydoc) return null;
+    return this.ydoc.getArray<ChatMessage>(`chat-messages-${threadId}`);
+  }
+
+  /**
+   * Get the chat prompt for a specific thread
+   */
+  getChatThreadPrompt(threadId: string): YText | null {
+    if (!this.ydoc) return null;
+    return this.ydoc.getText(`chat-prompt-${threadId}`);
+  }
+
+  /**
+   * Get the send request map for a specific thread
+   */
+  getThreadSendRequest(threadId: string): import('yjs').Map<any> | null {
+    if (!this.ydoc) return null;
+    return this.ydoc.getMap(`chat-send-request-${threadId}`);
   }
 
   /**

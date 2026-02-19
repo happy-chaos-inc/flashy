@@ -705,3 +705,125 @@
     transform: rotate(360deg);
   }
 }
+
+/* Thread tabs */
+.chat-thread-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chat-thread-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-thread-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.chat-thread-tab:hover {
+  border-color: #B399D4;
+  color: #374151;
+}
+
+.chat-thread-tab.active {
+  background: #B399D4;
+  border-color: #B399D4;
+  color: white;
+}
+
+.chat-thread-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transition: all 0.15s;
+  margin-left: 2px;
+}
+
+.chat-thread-tab:hover .chat-thread-close {
+  opacity: 0.6;
+}
+
+.chat-thread-close:hover {
+  opacity: 1 !important;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.chat-thread-tab.active .chat-thread-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.chat-thread-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.chat-thread-add:hover {
+  border-color: #B399D4;
+  color: #B399D4;
+  background: #faf5ff;
+}
+
+/* Embedding status indicator on attachment chips */
+.chat-embedding-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chat-embedding-status.processing {
+  color: #B399D4;
+}
+
+.chat-embedding-status.ready {
+  color: #10b981;
+}
+
+.chat-embedding-status.error {
+  color: #ef4444;
+}
+
+.chat-embedding-status.pending {
+  color: #9ca3af;
+}

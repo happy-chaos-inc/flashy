@@ -86,6 +86,25 @@
   max-width: 100%;
   width: 100%;
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: #B399D4 transparent;
+}
+
+.tiptap-editor::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tiptap-editor::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tiptap-editor::-webkit-scrollbar-thumb {
+  background: #d1c4e0;
+  border-radius: 3px;
+}
+
+.tiptap-editor::-webkit-scrollbar-thumb:hover {
+  background: #B399D4;
 }
 
 .tiptap-editor h1 {
