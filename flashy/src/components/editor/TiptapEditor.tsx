@@ -216,6 +216,80 @@ export function TiptapEditor({ scrollTarget, isActive = true }: TiptapEditorProp
     return () => unsubscribe();
   }, [editor, provider]);
 
+  // Listen for searchScrollTo events from the SearchBar
+  useEffect(() => {
+    if (!editor || !isActive) return;
+
+    const handleSearchScroll = (e: Event) => {
+      const { query, matchIndex } = (e as CustomEvent).detail;
+      if (!query) return;
+
+      const docSize = editor.state.doc.content.size;
+      const fullText = editor.state.doc.textBetween(0, docSize, '\n', '\n');
+      const needle = query.toLowerCase();
+      let searchFrom = 0;
+      let found = -1;
+
+      for (let i = 0; i <= matchIndex; i++) {
+        found = fullText.toLowerCase().indexOf(needle, searchFrom);
+        if (found === -1) break;
+        searchFrom = found + needle.length;
+      }
+
+      if (found === -1) return;
+
+      // Map plain-text offset to ProseMirror position
+      // Walk through doc nodes to find the correct position
+      let charCount = 0;
+      let pmFrom = 0;
+      let pmTo = 0;
+      editor.state.doc.descendants((node, pos) => {
+        if (pmTo > 0) return false; // Already found
+        if (node.isText && node.text) {
+          const nodeStart = charCount;
+          const nodeEnd = charCount + node.text.length;
+          if (found >= nodeStart && found < nodeEnd) {
+            const offset = found - nodeStart;
+            pmFrom = pos + offset;
+            pmTo = pmFrom + needle.length;
+            return false;
+          }
+          charCount += node.text.length;
+        } else if (node.isBlock && charCount > 0) {
+          charCount += 1; // Account for newline between blocks
+        }
+        return true;
+      });
+
+      if (pmTo === 0) {
+        // Fallback: use textBetween-based approximate mapping
+        pmFrom = Math.min(found + 1, docSize - 1);
+        pmTo = Math.min(pmFrom + needle.length, docSize);
+      }
+
+      try {
+        editor.chain().focus().setTextSelection({ from: pmFrom, to: pmTo }).run();
+
+        requestAnimationFrame(() => {
+          const coords = editor.view.coordsAtPos(pmFrom);
+          if (coords) {
+            const resolvedPos = editor.state.doc.resolve(pmFrom);
+            const depth = resolvedPos.depth > 0 ? resolvedPos.before(1) : 0;
+            const domNode = editor.view.nodeDOM(depth);
+            if (domNode instanceof HTMLElement) {
+              domNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }
+        });
+      } catch (e) {
+        logger.warn('Could not scroll to search match:', e);
+      }
+    };
+
+    window.addEventListener('searchScrollTo', handleSearchScroll);
+    return () => window.removeEventListener('searchScrollTo', handleSearchScroll);
+  }, [editor, isActive]);
+
   // Handle scroll to target position (when clicking on another user)
   useEffect(() => {
     if (!scrollTarget || !editor) return;

@@ -1,13 +1,40 @@
 import { useEffect, useRef, useState } from 'react';
-import { EditorView, basicSetup } from 'codemirror';
+import { EditorView } from 'codemirror';
 import { EditorState } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
 import { collaborationManager } from '../../lib/CollaborationManager';
 import { logger } from '../../lib/logger';
-import { EditorView as CMEditorView, ViewUpdate, ViewPlugin } from '@codemirror/view';
+import {
+  EditorView as CMEditorView,
+  ViewUpdate,
+  ViewPlugin,
+  lineNumbers,
+  highlightActiveLineGutter,
+  highlightSpecialChars,
+  drawSelection,
+  dropCursor,
+  rectangularSelection,
+  crosshairCursor,
+  highlightActiveLine,
+  keymap,
+} from '@codemirror/view';
 import { getCursorDataUrl } from '../../config/cursorSvg';
-import { keymap } from '@codemirror/view';
-import { indentWithTab } from '@codemirror/commands';
+import {
+  indentWithTab,
+  history,
+  defaultKeymap,
+  historyKeymap,
+} from '@codemirror/commands';
+import {
+  foldGutter,
+  indentOnInput,
+  syntaxHighlighting,
+  defaultHighlightStyle,
+  bracketMatching,
+  foldKeymap,
+} from '@codemirror/language';
+import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from '@codemirror/autocomplete';
+import { highlightSelectionMatches } from '@codemirror/search';
 import { prosemirrorToMarkdown } from '../../lib/prosemirrorToMarkdown';
 import { markdownToProsemirror } from '../../lib/markdownToProsemirror';
 import { collaborativeCursors } from '../../lib/codemirrorCursors';
@@ -135,12 +162,34 @@ export function MarkdownEditor({ scrollTarget, isActive = true }: MarkdownEditor
         const state = EditorState.create({
           doc: initialMarkdown,
           extensions: [
-            basicSetup,
+            // Individual extensions from basicSetup, excluding search panel
+            lineNumbers(),
+            highlightActiveLineGutter(),
+            highlightSpecialChars(),
+            history(),
+            foldGutter(),
+            drawSelection(),
+            dropCursor(),
+            EditorState.allowMultipleSelections.of(true),
+            indentOnInput(),
+            syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+            bracketMatching(),
+            closeBrackets(),
+            autocompletion(),
+            rectangularSelection(),
+            crosshairCursor(),
+            highlightActiveLine(),
+            highlightSelectionMatches(),
+            keymap.of([
+              ...closeBracketsKeymap,
+              ...defaultKeymap,
+              ...historyKeymap,
+              ...foldKeymap,
+              ...completionKeymap,
+              indentWithTab,
+            ]),
             markdown(),
             foldStatePlugin,
-            // Tab handling: indentWithTab works for lists and code blocks
-            // Regular paragraphs don't support indentation (markdown ignores leading spaces)
-            keymap.of([indentWithTab]),
             // Collaborative cursors - show remote carets
             collaborativeCursors(provider.awareness),
             // Change handler: Parse markdown and update Y.XmlFragment
@@ -329,6 +378,53 @@ export function MarkdownEditor({ scrollTarget, isActive = true }: MarkdownEditor
     };
 
     resync();
+  }, [isActive, isReady]);
+
+  // Listen for searchScrollTo events from the SearchBar
+  useEffect(() => {
+    if (!isActive || !viewRef.current) return;
+
+    const handleSearchScroll = (e: Event) => {
+      const { query, matchIndex } = (e as CustomEvent).detail;
+      const view = viewRef.current;
+      if (!query || !view) return;
+
+      const docText = view.state.doc.toString();
+      const needle = query.toLowerCase();
+      let searchFrom = 0;
+      let found = -1;
+
+      for (let i = 0; i <= matchIndex; i++) {
+        found = docText.toLowerCase().indexOf(needle, searchFrom);
+        if (found === -1) break;
+        searchFrom = found + needle.length;
+      }
+
+      if (found === -1) return;
+
+      view.dispatch({
+        selection: { anchor: found, head: found + needle.length },
+        scrollIntoView: true,
+      });
+
+      // Flash highlight
+      requestAnimationFrame(() => {
+        try {
+          const line = view.state.doc.lineAt(found);
+          const domAtPos = view.domAtPos(line.from);
+          const lineElement = domAtPos?.node?.parentElement;
+          if (lineElement) {
+            lineElement.classList.add('highlight-flash');
+            setTimeout(() => lineElement.classList.remove('highlight-flash'), 1000);
+          }
+        } catch {
+          // Fallback - already scrolled via dispatch
+        }
+      });
+    };
+
+    window.addEventListener('searchScrollTo', handleSearchScroll);
+    return () => window.removeEventListener('searchScrollTo', handleSearchScroll);
   }, [isActive, isReady]);
 
   // Handle scroll to target position (when clicking on another user)

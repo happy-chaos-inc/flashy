@@ -49,6 +49,11 @@ class CollaborationManager {
   private provider: SimpleSupabaseProvider | null = null;
   private indexeddbProvider: IndexeddbPersistence | null = null;
   public persistence: DocumentPersistence | null = null; // Public for version history UI
+
+  /** Synchronous access to the current Y.Doc (null if not connected) */
+  getYDoc(): Doc | null {
+    return this.ydoc;
+  }
   private refCount: number = 0;
   private cleanupTimer: NodeJS.Timeout | null = null;
   private dbLoaded: boolean = false;

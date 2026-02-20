@@ -179,6 +179,38 @@
   -webkit-box-orient: vertical;
 }
 
+/* Section headers */
+.search-bar-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.search-bar-section-header:first-child {
+  border-top: none;
+}
+
+.search-bar-section-count {
+  margin-left: auto;
+  font-weight: 500;
+  color: #B399D4;
+}
+
+.search-bar-highlight {
+  background: #F5E1FD;
+  color: #8B6BB8;
+  border-radius: 2px;
+  padding: 0 1px;
+  font-weight: 600;
+}
+
 @keyframes slideDown {
   from {
     opacity: 0;
