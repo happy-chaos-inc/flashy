@@ -16,7 +16,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dis
 const MODELS = {
   free: [
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', description: 'Free tier (500/day)' },
-    { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', provider: 'anthropic', description: 'Free tier (500/day)' },
+    { id: 'claude-haiku-4-5-20251001', name: 'Claude 4.5 Haiku', provider: 'anthropic', description: 'Free tier (500/day)' },
   ],
   openai: [
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', description: 'Fast & affordable' },
@@ -24,8 +24,8 @@ const MODELS = {
     { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', description: 'Latest & best' },
   ],
   anthropic: [
-    { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', provider: 'anthropic', description: 'Fast & smart' },
-    { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'anthropic', description: 'Most capable' },
+    { id: 'claude-haiku-4-5-20251001', name: 'Claude 4.5 Haiku', provider: 'anthropic', description: 'Fast & smart' },
+    { id: 'claude-sonnet-4-5-20250929', name: 'Claude 4.5 Sonnet', provider: 'anthropic', description: 'Most capable' },
   ],
 };
 
@@ -217,11 +217,11 @@ function MessageContent({ content }: { content: string }) {
 }
 
 interface ChatSidebarProps {
-  isAnimating?: boolean;
   roomId: string;
+  onClose?: () => void;
 }
 
-export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
+export function ChatSidebar({ roomId, onClose }: ChatSidebarProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -1150,7 +1150,7 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
 
   return (
     <div
-      className={`chat-sidebar ${isAnimating ? 'animating' : ''}`}
+      className="chat-sidebar"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -1168,13 +1168,20 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
       <div className="chat-header">
         <div className="chat-title-row">
           <h3>AI Chat</h3>
-          <span className="chat-status">
-            {isSending
-              ? 'Thinking...'
-              : !userApiKey
-                ? 'Limited usage'
-                : `${messages.length} messages`}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span className="chat-status">
+              {isSending
+                ? 'Thinking...'
+                : !userApiKey
+                  ? 'Limited usage'
+                  : `${messages.length} messages`}
+            </span>
+            {onClose && (
+              <button className="chat-close-button" onClick={onClose} title="Close chat">
+                <X size={16} />
+              </button>
+            )}
+          </div>
         </div>
         <div className="chat-toolbar">
           <button
@@ -1292,7 +1299,7 @@ export function ChatSidebar({ isAnimating = false, roomId }: ChatSidebarProps) {
                 className={`chat-provider-btn ${apiProvider === 'anthropic' ? 'active' : ''}`}
                 onClick={() => {
                   setApiProvider('anthropic');
-                  setSelectedModel('claude-3-5-haiku-20241022');
+                  setSelectedModel('claude-haiku-4-5-20251001');
                 }}
               >
                 Anthropic

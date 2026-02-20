@@ -36,6 +36,26 @@
   font-weight: 500;
 }
 
+.chat-close-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.chat-close-button:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
 .chat-toolbar {
   display: flex;
   gap: 8px;

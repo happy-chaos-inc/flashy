@@ -1,5 +1,5 @@
 // Singleton manager for collaboration
-import { Doc, Text as YText, Array as YArray, XmlElement } from 'yjs';
+import { Doc, Text as YText, Array as YArray, XmlElement, XmlText, XmlFragment } from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { SimpleSupabaseProvider } from './SimpleSupabaseProvider';
 import { DocumentPersistence } from './DocumentPersistence';
@@ -57,6 +57,7 @@ class CollaborationManager {
   private currentRoomId: string | null = null;
   private connectPromise: Promise<{ ydoc: Doc; provider: SimpleSupabaseProvider; userInfo: { userId: string; color: string; name: string } }> | null = null;
   private colorChangeListeners: Set<(color: string) => void> = new Set();
+  private introAborted = false;
 
   private constructor() {}
 
@@ -295,13 +296,14 @@ class CollaborationManager {
         logger.log('📝 No database content, using IndexedDB state only');
       }
 
-      // Seed new rooms with 14 empty lines
+      // Seed new rooms with a typing animation (only when created via "Create Room" button)
       const xmlFragment = this.ydoc.getXmlFragment('prosemirror');
-      if (xmlFragment.length === 0) {
-        logger.log('📝 New room detected - initializing with 14 empty lines');
-        for (let i = 0; i < 14; i++) {
-          xmlFragment.push([new XmlElement('paragraph')]);
-        }
+      const newRoomFlag = sessionStorage.getItem('flashy_new_room');
+      if (newRoomFlag === this.currentRoomId && xmlFragment.length === 0) {
+        sessionStorage.removeItem('flashy_new_room');
+        logger.log('📝 New room created - starting intro typewriter');
+        this.introAborted = false;
+        this.typeIntro(xmlFragment);
       }
 
       // Enable auto-save after loading
@@ -457,7 +459,76 @@ class CollaborationManager {
     return usedColors;
   }
 
+  private async typeIntro(fragment: XmlFragment): Promise<void> {
+    const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+    const typeChars = async (textNode: XmlText, text: string, delay: number) => {
+      for (const char of text) {
+        if (this.introAborted) return;
+        await sleep(delay);
+        textNode.insert(textNode.length, char);
+      }
+    };
+
+    const typeWords = async (textNode: XmlText, text: string, delay: number) => {
+      const words = text.split(' ');
+      for (let i = 0; i < words.length; i++) {
+        if (this.introAborted) return;
+        await sleep(delay);
+        textNode.insert(textNode.length, (i > 0 ? ' ' : '') + words[i]);
+      }
+    };
+
+    const addHeading = async (level: number, text: string) => {
+      if (this.introAborted) return;
+      const heading = new XmlElement('heading');
+      (heading as any).setAttribute('level', level);
+      const textNode = new XmlText();
+      heading.push([textNode]);
+      fragment.push([heading]);
+      await typeChars(textNode, text, 55);
+    };
+
+    const addParagraph = async (text: string) => {
+      if (this.introAborted) return;
+      const p = new XmlElement('paragraph');
+      const textNode = new XmlText();
+      p.push([textNode]);
+      fragment.push([p]);
+      await typeWords(textNode, text, 80);
+    };
+
+    try {
+      // Let the UI fully load before starting
+      await sleep(1500);
+      if (this.introAborted) return;
+
+      await addHeading(1, 'Welcome to Flashy');
+      await sleep(500);
+      fragment.push([new XmlElement('paragraph')]);
+
+      await addHeading(2, 'What is Flashy?');
+      await sleep(400);
+      await addParagraph('A collaborative study tool. Write your notes here and Flashy turns them into flashcards.');
+      await sleep(600);
+      fragment.push([new XmlElement('paragraph')]);
+
+      await addHeading(2, 'How do I make a flashcard?');
+      await sleep(400);
+      await addParagraph('Use a ## heading for the front of the card. Write text below it for the back. Use # headings to group cards into sections.');
+      await sleep(200);
+
+      if (!this.introAborted) {
+        fragment.push([new XmlElement('paragraph')]);
+        fragment.push([new XmlElement('paragraph')]);
+      }
+    } catch (e) {
+      logger.warn('Intro typewriter interrupted:', e);
+    }
+  }
+
   disconnect(): void {
+    this.introAborted = true;
     this.refCount--;
     logger.log('📊 CollaborationManager.disconnect() - refCount:', this.refCount);
 

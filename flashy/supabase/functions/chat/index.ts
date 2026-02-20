@@ -39,14 +39,14 @@ interface RequestBody {
 // Model configurations
 const MODELS = {
   // Free tier (your key)
-  'gpt-4o-mini': { provider: 'openai', maxTokens: 500, free: true },
+  'gpt-4o-mini': { provider: 'openai', maxTokens: 4096, free: true },
   // Premium OpenAI (BYOK)
-  'gpt-4-turbo': { provider: 'openai', maxTokens: 1000, free: false },
-  'gpt-4o': { provider: 'openai', maxTokens: 1000, free: false },
+  'gpt-4-turbo': { provider: 'openai', maxTokens: 4096, free: false },
+  'gpt-4o': { provider: 'openai', maxTokens: 4096, free: false },
   // Free tier Anthropic (your key)
-  'claude-3-5-haiku-20241022': { provider: 'anthropic', maxTokens: 500, free: true },
+  'claude-haiku-4-5-20251001': { provider: 'anthropic', maxTokens: 4096, free: true },
   // Premium Anthropic (BYOK)
-  'claude-3-5-sonnet-20241022': { provider: 'anthropic', maxTokens: 1000, free: false },
+  'claude-sonnet-4-5-20250929': { provider: 'anthropic', maxTokens: 4096, free: false },
 }
 
 const FREE_TIER_LIMIT = 500 // messages per day per room (~$1/day max per room)

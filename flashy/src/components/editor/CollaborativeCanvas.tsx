@@ -3,6 +3,7 @@ import { Map as YMap } from 'yjs';
 import { collaborationManager } from '../../lib/CollaborationManager';
 import { CanvasToolbar } from './CanvasToolbar';
 import { logger } from '../../lib/logger';
+import { Layers } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import './CollaborativeCanvas.css';
 
@@ -589,9 +590,9 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
       {/* Empty state */}
       {flashcards.length === 0 && (
         <div className="canvas-empty-state">
-          <div className="canvas-empty-icon">📝</div>
+          <div className="canvas-empty-icon"><Layers size={32} /></div>
           <div className="canvas-empty-title">No flashcards yet</div>
-          <div className="canvas-empty-subtitle">Add ## headers in the editor to create cards</div>
+          <div className="canvas-empty-subtitle">Use ## headings in the editor to create cards</div>
         </div>
       )}
 

@@ -124,7 +124,7 @@ export function TiptapEditor({ scrollTarget, isActive = true }: TiptapEditorProp
           levels: [1, 2, 3, 4, 5, 6],
         }),
         Placeholder.configure({
-          placeholder: 'Start typing to create your first flashcard... (Use ## for headings)',
+          placeholder: 'Start typing...',
         }),
         TabIndentation, // Add Tab key support for list indentation
         ...(ydoc && provider
