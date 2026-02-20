@@ -102,10 +102,6 @@ export function SpeedRoundGame({ flashcards, onComplete, onBack }: GameProps) {
             setIsFinished(true);
             if (timerRef.current) clearInterval(timerRef.current);
 
-            // Save high score
-            const key = 'flashy_speed_highscore';
-            const prevScore = parseInt(localStorage.getItem(key) || '0', 10);
-            // We'll check score in the finish effect
             return 0;
           }
           return prev - 1;

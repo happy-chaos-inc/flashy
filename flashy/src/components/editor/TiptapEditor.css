@@ -10,6 +10,22 @@
   border: 1px solid #e5e7eb;
 }
 
+/* EditorContent wrapper needs to fill remaining space and allow scroll */
+.tiptap-container > .tiptap > .ProseMirror,
+.tiptap-container .tiptap-editor {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.tiptap-container > div:last-child {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .tiptap-toolbar {
   display: flex;
   align-items: center;

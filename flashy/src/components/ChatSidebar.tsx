@@ -63,12 +63,6 @@ interface PendingFileData {
   extractedText: string;
 }
 
-function getFileCategory(file: File): 'image' | 'pdf' | 'ppt' {
-  if (file.type.startsWith('image/')) return 'image';
-  if (file.type === 'application/pdf') return 'pdf';
-  return 'ppt';
-}
-
 // Read file directly as base64 (no canvas — preserves valid image data)
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -228,13 +222,13 @@ export function ChatSidebar({ roomId, onClose }: ChatSidebarProps) {
   const [, setIsLeader] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [remainingMessages, setRemainingMessages] = useState<number | null>(null);
+  const [, setRemainingMessages] = useState<number | null>(null);
   const [attachments, setAttachments] = useState<AttachedFile[]>([]); // Local files in this browser
   const [sharedAttachmentsMeta, setSharedAttachmentsMeta] = useState<SharedAttachmentMeta[]>([]); // All attachments from all peers
   const [isDragOver, setIsDragOver] = useState(false);
   const [threads, setThreads] = useState<ChatThread[]>([{ id: 'default', name: 'Chat', createdAt: Date.now() }]);
   const [activeThreadId, setActiveThreadId] = useState('default');
-  const [hasRagChunks, setHasRagChunks] = useState(false);
+  const [, setHasRagChunks] = useState(false);
 
   // Per-thread presence: map of threadId -> array of {name, color} of peers in that thread
   const [threadPresence, setThreadPresence] = useState<Record<string, Array<{name: string; color: string}>>>({});
@@ -961,7 +955,7 @@ export function ChatSidebar({ roomId, onClose }: ChatSidebarProps) {
     if (validFiles.length > 0) {
       setAttachments(prev => [...prev, ...validFiles]);
     }
-  }, []);
+  }, [roomId]);
 
   const removeAttachment = useCallback((index: number) => {
     const yAttachmentsMeta = yAttachmentsMetaRef.current;
@@ -983,29 +977,6 @@ export function ChatSidebar({ roomId, onClose }: ChatSidebarProps) {
 
       return prev.filter((_, i) => i !== index);
     });
-  }, []);
-
-  const clearAttachments = useCallback(() => {
-    const yAttachmentsMeta = yAttachmentsMetaRef.current;
-
-    setAttachments(prev => {
-      prev.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
-      return [];
-    });
-
-    // Clear local files
-    localFilesRef.current.clear();
-
-    // Clear our entries from shared meta
-    if (yAttachmentsMeta) {
-      const metaArray = yAttachmentsMeta.toArray();
-      // Delete in reverse order to maintain indices
-      for (let i = metaArray.length - 1; i >= 0; i--) {
-        if (metaArray[i].ownerId === clientIdRef.current) {
-          yAttachmentsMeta.delete(i, 1);
-        }
-      }
-    }
   }, []);
 
   // Handle send message

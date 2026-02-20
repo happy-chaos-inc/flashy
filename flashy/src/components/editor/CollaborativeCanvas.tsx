@@ -45,10 +45,6 @@ const CARD_WIDTH = 200;
 const CARD_HEIGHT = 140;
 const CARD_COLORS = ['#B399D4', '#7C9CE5', '#E57C7C', '#E5B97C', '#7CE5A3', '#E57CC8', '#7CE5D4', '#C5E57C'];
 
-function generateId(): string {
-  return Math.random().toString(36).substring(2, 10);
-}
-
 export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
