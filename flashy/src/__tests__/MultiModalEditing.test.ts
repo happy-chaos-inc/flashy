@@ -51,10 +51,9 @@ describe('Multi-Modal Editing Tests', () => {
       const markdown = '- Item 1\n- Item 2\n- Item 3';
       markdownToProsemirror(markdown, fragment);
 
-      expect(fragment.length).toBe(3);
+      // Consecutive bullet items are grouped into a single bulletList
+      expect(fragment.length).toBe(1);
       expect(fragment.get(0).nodeName).toBe('bulletList');
-      expect(fragment.get(1).nodeName).toBe('bulletList');
-      expect(fragment.get(2).nodeName).toBe('bulletList');
 
       doc.destroy();
     });
@@ -66,10 +65,9 @@ describe('Multi-Modal Editing Tests', () => {
       const markdown = '1. First\n2. Second\n3. Third';
       markdownToProsemirror(markdown, fragment);
 
-      expect(fragment.length).toBe(3);
+      // Consecutive ordered items are grouped into a single orderedList
+      expect(fragment.length).toBe(1);
       expect(fragment.get(0).nodeName).toBe('orderedList');
-      expect(fragment.get(1).nodeName).toBe('orderedList');
-      expect(fragment.get(2).nodeName).toBe('orderedList');
 
       doc.destroy();
     });
