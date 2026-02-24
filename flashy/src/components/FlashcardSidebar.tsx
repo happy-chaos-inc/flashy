@@ -1,9 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Star, ChevronLeft, ChevronDown, ChevronUp, Play, Edit2, Info } from 'lucide-react';
+import { Star, ChevronLeft, ChevronDown, ChevronUp, Play, Edit2, GraduationCap, Gamepad2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import packageJson from '../../package.json';
-
-const version = packageJson.version;
 
 export interface Flashcard {
   id: string;
@@ -18,6 +15,8 @@ interface FlashcardSidebarProps {
   starredCards: Set<string>;
   onToggleStar: (cardId: string, event: React.MouseEvent) => void;
   onStartStudy: (cardIds?: string[]) => void;
+  onStartTutor: (cardIds?: string[]) => void;
+  onStartGames?: () => void;
   isAnimating?: boolean;
 }
 
@@ -26,6 +25,8 @@ export function FlashcardSidebar({
   starredCards,
   onToggleStar,
   onStartStudy,
+  onStartTutor,
+  onStartGames,
   isAnimating = false,
 }: FlashcardSidebarProps) {
   // Internal state for sidebar UI
@@ -34,8 +35,6 @@ export function FlashcardSidebar({
   const [showOnlyStarred, setShowOnlyStarred] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [selectedSections, setSelectedSections] = useState<Set<string>>(new Set());
-  const [showInfoMenu, setShowInfoMenu] = useState(false);
-  const infoMenuRef = useRef<HTMLDivElement>(null);
   const hasInitializedSections = useRef(false);
 
   // Collapse all sections by default on first load
@@ -46,23 +45,6 @@ export function FlashcardSidebar({
       hasInitializedSections.current = true;
     }
   }, [flashcards]);
-
-  // Close info menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (infoMenuRef.current && !infoMenuRef.current.contains(event.target as Node)) {
-        setShowInfoMenu(false);
-      }
-    };
-
-    if (showInfoMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showInfoMenu]);
 
   // Handle flashcard click - expand card in place
   const handleFlashcardClick = (card: Flashcard) => {
@@ -155,49 +137,32 @@ export function FlashcardSidebar({
               Learn{selectedSections.size > 0 ? ` (${selectedSections.size})` : ''}
             </button>
             <button
+              className="study-button tutor-button"
+              onClick={() => onStartTutor(getSelectedCardIds())}
+              title={selectedSections.size > 0 ? `Quiz on ${selectedSections.size} selected section(s)` : "Quiz on all cards"}
+            >
+              <GraduationCap size={20} />
+              Tutor
+            </button>
+            {onStartGames && (
+              <button className="toolbar-icon-button" onClick={onStartGames} title="Learning games">
+                <Gamepad2 size={20} />
+              </button>
+            )}
+            <button
               className={`toolbar-icon-button ${showOnlyStarred ? 'active' : ''}`}
               onClick={() => setShowOnlyStarred(!showOnlyStarred)}
               title={showOnlyStarred ? "Show all cards" : "Show starred only"}
             >
               <Star size={20} fill={showOnlyStarred ? "currentColor" : "none"} />
             </button>
-            <div ref={infoMenuRef} style={{ position: 'relative' }}>
-              <button
-                className="toolbar-icon-button"
-                title="Info"
-                onClick={() => setShowInfoMenu(!showInfoMenu)}
-              >
-                <Info size={20} />
-              </button>
-              {showInfoMenu && (
-                <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: '8px',
-                  background: 'white',
-                  border: '1px solid #ddd',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                  padding: '16px',
-                  zIndex: 1000,
-                  whiteSpace: 'nowrap'
-                }}>
-                  <div style={{ fontSize: '14px', color: '#333', fontWeight: 500 }}>
-                    <span>made with dreams :)</span>
-                    <br />
-                    <span><u>v{version}</u></span>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         )}
       </div>
 
       {flashcards.length === 0 ? (
         <p className="sidebar-placeholder">
-          Add H2 headers (## Term) to create flashcards
+          Use ## headings in the editor to create flashcards
         </p>
       ) : showOnlyStarred && filteredCards.length === 0 ? (
         <p className="sidebar-placeholder">

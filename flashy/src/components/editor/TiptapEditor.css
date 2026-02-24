@@ -10,6 +10,22 @@
   border: 1px solid #e5e7eb;
 }
 
+/* EditorContent wrapper needs to fill remaining space and allow scroll */
+.tiptap-container > .tiptap > .ProseMirror,
+.tiptap-container .tiptap-editor {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.tiptap-container > div:last-child {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .tiptap-toolbar {
   display: flex;
   align-items: center;
@@ -86,6 +102,25 @@
   max-width: 100%;
   width: 100%;
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: #B399D4 transparent;
+}
+
+.tiptap-editor::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tiptap-editor::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tiptap-editor::-webkit-scrollbar-thumb {
+  background: #d1c4e0;
+  border-radius: 3px;
+}
+
+.tiptap-editor::-webkit-scrollbar-thumb:hover {
+  background: #B399D4;
 }
 
 .tiptap-editor h1 {

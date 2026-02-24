@@ -43,8 +43,8 @@ export function UpdateNotification() {
             handleRefresh();
           }, 3000);
         }
-      } catch (error) {
-        logger.error('Failed to check for updates:', error);
+      } catch {
+        // Silently ignore - network errors during update checks are expected
       }
     };
 

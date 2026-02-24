@@ -1,5 +1,5 @@
 // Singleton manager for collaboration
-import { Doc, Text as YText, Array as YArray } from 'yjs';
+import { Doc, Text as YText, Array as YArray, XmlElement, XmlText, XmlFragment } from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { SimpleSupabaseProvider } from './SimpleSupabaseProvider';
 import { DocumentPersistence } from './DocumentPersistence';
@@ -16,12 +16,44 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+// Shared attachment metadata - just names, not the actual data
+export interface SharedAttachmentMeta {
+  id: string;
+  name: string;
+  mimeType: string;
+  ownerId: number;  // clientID of the peer who has this file
+  ownerName: string;
+  embeddingStatus?: 'pending' | 'processing' | 'ready' | 'error';
+}
+
+// Chat thread metadata for multi-chat support
+export interface ChatThread {
+  id: string;
+  name: string;
+  model?: string;
+  provider?: 'openai' | 'anthropic';
+  createdAt: number;
+}
+
+// Send request - when someone presses Enter, this triggers the peer with files to send
+export interface SendRequest {
+  id: string;
+  prompt: string;
+  requestedBy: number;  // clientID who pressed Enter
+  timestamp: number;
+}
+
 class CollaborationManager {
   private static instance: CollaborationManager | null = null;
   private ydoc: Doc | null = null;
   private provider: SimpleSupabaseProvider | null = null;
   private indexeddbProvider: IndexeddbPersistence | null = null;
   public persistence: DocumentPersistence | null = null; // Public for version history UI
+
+  /** Synchronous access to the current Y.Doc (null if not connected) */
+  getYDoc(): Doc | null {
+    return this.ydoc;
+  }
   private refCount: number = 0;
   private cleanupTimer: NodeJS.Timeout | null = null;
   private dbLoaded: boolean = false;
@@ -30,6 +62,7 @@ class CollaborationManager {
   private currentRoomId: string | null = null;
   private connectPromise: Promise<{ ydoc: Doc; provider: SimpleSupabaseProvider; userInfo: { userId: string; color: string; name: string } }> | null = null;
   private colorChangeListeners: Set<(color: string) => void> = new Set();
+  private introAborted = false;
 
   private constructor() {}
 
@@ -268,6 +301,16 @@ class CollaborationManager {
         logger.log('📝 No database content, using IndexedDB state only');
       }
 
+      // Seed new rooms with a typing animation (only when created via "Create Room" button)
+      const xmlFragment = this.ydoc.getXmlFragment('prosemirror');
+      const newRoomFlag = sessionStorage.getItem('flashy_new_room');
+      if (newRoomFlag === this.currentRoomId && xmlFragment.length === 0) {
+        sessionStorage.removeItem('flashy_new_room');
+        logger.log('📝 New room created - starting intro typewriter');
+        this.introAborted = false;
+        this.typeIntro(xmlFragment);
+      }
+
       // Enable auto-save after loading
       this.persistence.enableAutoSave();
 
@@ -312,6 +355,58 @@ class CollaborationManager {
   getChatMessages(): YArray<ChatMessage> | null {
     if (!this.ydoc) return null;
     return this.ydoc.getArray<ChatMessage>('chat-messages');
+  }
+
+  /**
+   * Get the shared chat attachment metadata Y.Array
+   * Just metadata - actual files stay in the owner's browser
+   */
+  getChatAttachmentsMeta(): YArray<SharedAttachmentMeta> | null {
+    if (!this.ydoc) return null;
+    return this.ydoc.getArray<SharedAttachmentMeta>('chat-attachments-meta');
+  }
+
+  /**
+   * Get the send request Y.Map
+   * When someone presses Enter, this signals the peer with files to make the API call
+   */
+  getSendRequest(): import('yjs').Map<any> | null {
+    if (!this.ydoc) return null;
+    return this.ydoc.getMap('chat-send-request');
+  }
+
+  /**
+   * Get the chat threads Y.Map
+   * Stores thread metadata for multi-chat support
+   */
+  getChatThreads(): import('yjs').Map<any> | null {
+    if (!this.ydoc) return null;
+    return this.ydoc.getMap('chat-threads');
+  }
+
+  /**
+   * Get chat messages for a specific thread
+   * Each thread has its own Y.Array for independent message history
+   */
+  getChatThreadMessages(threadId: string): YArray<ChatMessage> | null {
+    if (!this.ydoc) return null;
+    return this.ydoc.getArray<ChatMessage>(`chat-messages-${threadId}`);
+  }
+
+  /**
+   * Get the chat prompt for a specific thread
+   */
+  getChatThreadPrompt(threadId: string): YText | null {
+    if (!this.ydoc) return null;
+    return this.ydoc.getText(`chat-prompt-${threadId}`);
+  }
+
+  /**
+   * Get the send request map for a specific thread
+   */
+  getThreadSendRequest(threadId: string): import('yjs').Map<any> | null {
+    if (!this.ydoc) return null;
+    return this.ydoc.getMap(`chat-send-request-${threadId}`);
   }
 
   /**
@@ -369,7 +464,76 @@ class CollaborationManager {
     return usedColors;
   }
 
+  private async typeIntro(fragment: XmlFragment): Promise<void> {
+    const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+    const typeChars = async (textNode: XmlText, text: string, delay: number) => {
+      for (const char of text) {
+        if (this.introAborted) return;
+        await sleep(delay);
+        textNode.insert(textNode.length, char);
+      }
+    };
+
+    const typeWords = async (textNode: XmlText, text: string, delay: number) => {
+      const words = text.split(' ');
+      for (let i = 0; i < words.length; i++) {
+        if (this.introAborted) return;
+        await sleep(delay);
+        textNode.insert(textNode.length, (i > 0 ? ' ' : '') + words[i]);
+      }
+    };
+
+    const addHeading = async (level: number, text: string) => {
+      if (this.introAborted) return;
+      const heading = new XmlElement('heading');
+      (heading as any).setAttribute('level', level);
+      const textNode = new XmlText();
+      heading.push([textNode]);
+      fragment.push([heading]);
+      await typeChars(textNode, text, 55);
+    };
+
+    const addParagraph = async (text: string) => {
+      if (this.introAborted) return;
+      const p = new XmlElement('paragraph');
+      const textNode = new XmlText();
+      p.push([textNode]);
+      fragment.push([p]);
+      await typeWords(textNode, text, 80);
+    };
+
+    try {
+      // Let the UI fully load before starting
+      await sleep(1500);
+      if (this.introAborted) return;
+
+      await addHeading(1, 'Welcome to Flashy');
+      await sleep(500);
+      fragment.push([new XmlElement('paragraph')]);
+
+      await addHeading(2, 'What is Flashy?');
+      await sleep(400);
+      await addParagraph('A collaborative study tool. Write your notes here and Flashy turns them into flashcards.');
+      await sleep(600);
+      fragment.push([new XmlElement('paragraph')]);
+
+      await addHeading(2, 'How do I make a flashcard?');
+      await sleep(400);
+      await addParagraph('Use a ## heading for the front of the card. Write text below it for the back. Use # headings to group cards into sections.');
+      await sleep(200);
+
+      if (!this.introAborted) {
+        fragment.push([new XmlElement('paragraph')]);
+        fragment.push([new XmlElement('paragraph')]);
+      }
+    } catch (e) {
+      logger.warn('Intro typewriter interrupted:', e);
+    }
+  }
+
   disconnect(): void {
+    this.introAborted = true;
     this.refCount--;
     logger.log('📊 CollaborationManager.disconnect() - refCount:', this.refCount);
 

@@ -3,7 +3,11 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
+import { initErrorReporter } from './lib/errorReporter';
 // import { runSupabaseDebugTest } from './lib/supabase-debug-test';
+
+// Initialize error reporting to Supabase
+initErrorReporter();
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement

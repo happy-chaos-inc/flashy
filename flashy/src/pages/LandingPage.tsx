@@ -21,6 +21,7 @@ export function LandingPage() {
 
   const handleCreateRoom = () => {
     const roomId = generateRoomId();
+    sessionStorage.setItem('flashy_new_room', roomId);
     navigate(`/room/${roomId}`);
   };
 

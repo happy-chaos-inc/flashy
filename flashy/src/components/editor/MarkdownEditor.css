@@ -5,7 +5,7 @@
   flex-direction: column;
   background: white;
   border-radius: 12px;
-  overflow: visible;
+  overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   border: 1px solid #e5e7eb;
 }
@@ -62,28 +62,27 @@
   font-size: 14px;
   line-height: 1.6;
   background: rgba(255, 255, 255, 0.8);
-  scrollbar-color: #B399D4 #f0f0f0;
+  scrollbar-color: #B399D4 transparent;
   position: relative;
   z-index: 2; /* Higher than breadcrumb so cursor labels appear above */
 }
 
 .markdown-editor::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 .markdown-editor::-webkit-scrollbar-track {
-  background: #f0f0f0;
-  border-radius: 4px;
+  background: transparent;
 }
 
 .markdown-editor::-webkit-scrollbar-thumb {
-  background: #B399D4;
-  border-radius: 4px;
+  background: #d1c4e0;
+  border-radius: 3px;
 }
 
 .markdown-editor::-webkit-scrollbar-thumb:hover {
-  background: #9b7ec4;
+  background: #B399D4;
 }
 
 /* CodeMirror styling overrides */

@@ -10,6 +10,17 @@ import { logger } from './logger';
 
 const SAVE_DEBOUNCE_MS = 2000; // Save 2 seconds after last change
 
+// Safe base64 encoding for large Uint8Arrays (avoids stack overflow)
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  return btoa(binary);
+}
+
 // Version snapshot configuration
 const SNAPSHOT_EVERY_N_SAVES = 5; // Take snapshot every 5th save
 const SNAPSHOT_EVERY_SECONDS = 120; // OR every 2 minutes (120 seconds)
@@ -121,7 +132,7 @@ export class DocumentPersistence {
 
       // STEP 2: Get merged Yjs state
       const stateVector = Y.encodeStateAsUpdate(this.doc);
-      const base64State = btoa(String.fromCharCode.apply(null, Array.from(stateVector)));
+      const base64State = uint8ArrayToBase64(stateVector);
 
       // Get text content for searching/preview
       const ytext = this.doc.getText('content');
