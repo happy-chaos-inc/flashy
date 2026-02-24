@@ -143,21 +143,14 @@ class CollaborationManager {
 
       this.ydoc = new Doc();
 
-      // Check if IndexedDB is stale (older than 1 hour)
+      // Track visit time for staleness detection
       const lastVisitKey = `flashy_last_visit_${roomId}`;
-      const lastVisit = localStorage.getItem(lastVisitKey);
       const now = Date.now();
-      const oneHour = 60 * 60 * 1000;
-
-      const indexedDbName = `flashy-doc-${roomId}`;
-      if (lastVisit && (now - parseInt(lastVisit)) > oneHour) {
-        logger.log('🧹 IndexedDB is stale (>1hr old), clearing...');
-        indexedDB.deleteDatabase(indexedDbName);
-        logger.log('✅ Stale IndexedDB cleared - will load fresh from database');
-      }
-
-      // Update last visit timestamp
       localStorage.setItem(lastVisitKey, now.toString());
+
+      // Keep IndexedDB as a safety net — never delete it before confirming
+      // the database has good data. CRDT merge handles any conflicts.
+      const indexedDbName = `flashy-doc-${roomId}`;
 
       // Add IndexedDB persistence for instant local sync (per room)
       this.indexeddbProvider = new IndexeddbPersistence(indexedDbName, this.ydoc);
@@ -318,8 +311,17 @@ class CollaborationManager {
       this.addBeforeUnloadHandler();
     } catch (error) {
       logger.error('❌ Failed to load from database:', error);
-      // Continue anyway - IndexedDB might have data
-      this.persistence?.enableAutoSave();
+      // Only enable auto-save if we have SOME local content (from IndexedDB).
+      // If the doc is empty AND the db load failed, don't auto-save — that would
+      // overwrite the database with an empty state.
+      const xmlFragment = this.ydoc?.getXmlFragment('prosemirror');
+      const hasLocalContent = xmlFragment && xmlFragment.length > 0;
+      if (hasLocalContent) {
+        logger.log('📝 IndexedDB has content, enabling auto-save');
+        this.persistence?.enableAutoSave();
+      } else {
+        logger.warn('⚠️ No local content and database load failed — auto-save disabled to prevent data loss');
+      }
     }
   }
 
