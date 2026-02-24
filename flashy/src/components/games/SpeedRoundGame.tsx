@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Trophy, Flame, Zap } from 'lucide-react';
 
 interface Flashcard {
@@ -15,35 +15,77 @@ interface GameProps {
   onBack: () => void;
 }
 
-function checkAnswer(userAnswer: string, correctAnswer: string): boolean {
-  const normalizedUser = userAnswer.toLowerCase().trim();
-  const normalizedCorrect = correctAnswer.toLowerCase().trim();
+const STOP_WORDS = new Set([
+  'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+  'should', 'may', 'might', 'shall', 'can', 'need', 'dare', 'ought',
+  'used', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from',
+  'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below',
+  'between', 'out', 'off', 'over', 'under', 'again', 'further', 'then',
+  'once', 'and', 'but', 'or', 'nor', 'not', 'so', 'yet', 'both', 'either',
+  'neither', 'each', 'every', 'all', 'any', 'few', 'more', 'most', 'other',
+  'some', 'such', 'no', 'only', 'own', 'same', 'than', 'too', 'very',
+  'just', 'because', 'if', 'when', 'where', 'how', 'what', 'which', 'who',
+  'whom', 'this', 'that', 'these', 'those', 'it', 'its', 'also', 'about',
+  'up', 'like', 'them', 'they', 'their', 'there', 'here', 'we', 'us',
+  'our', 'he', 'she', 'him', 'her', 'his', 'i', 'me', 'my', 'you', 'your',
+]);
 
-  // Exact match
-  if (normalizedUser === normalizedCorrect) return true;
+function extractKeywords(definition: string): string[] {
+  const words = definition.split(/\s+/);
+  const seen = new Set<string>();
+  const keywords: string[] = [];
 
-  // Check if user answer contains the correct answer or vice versa
-  if (normalizedCorrect.includes(normalizedUser) && normalizedUser.length >= 3) return true;
-  if (normalizedUser.includes(normalizedCorrect)) return true;
+  for (const raw of words) {
+    const word = raw.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '');
+    const lower = word.toLowerCase();
+    if (word.length >= 3 && !STOP_WORDS.has(lower) && !seen.has(lower)) {
+      seen.add(lower);
+      keywords.push(word);
+    }
+  }
 
-  // Jaccard similarity on word arrays
-  const userWords = normalizedUser.split(/\s+/).filter(w => w.length > 2);
-  const correctWordsArr = normalizedCorrect.split(/\s+/).filter(w => w.length > 2);
+  // Cap at 8 — pick evenly spaced if too many
+  if (keywords.length > 8) {
+    const step = keywords.length / 8;
+    const picked: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      picked.push(keywords[Math.round(i * step)]);
+    }
+    return picked;
+  }
 
-  if (correctWordsArr.length === 0) return normalizedUser === normalizedCorrect;
+  return keywords;
+}
 
-  let matchCount = 0;
-  userWords.forEach(word => {
-    for (let i = 0; i < correctWordsArr.length; i++) {
-      if (correctWordsArr[i].includes(word) || word.includes(correctWordsArr[i])) {
-        matchCount++;
+function wordMatchesKeyword(typed: string, keyword: string): boolean {
+  const a = typed.toLowerCase();
+  const b = keyword.toLowerCase();
+  if (a === b) return true;
+  // Allow 1 char off for words 5+ chars
+  if (b.length >= 5 && Math.abs(a.length - b.length) <= 1) {
+    let diffs = 0;
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      if (a[i] !== b[i]) diffs++;
+      if (diffs > 1) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+function getMatchedKeywords(input: string, keywords: string[]): Set<number> {
+  const typedWords = input.toLowerCase().split(/\s+/).filter(w => w.length >= 2);
+  const matched = new Set<number>();
+  for (const typed of typedWords) {
+    for (let i = 0; i < keywords.length; i++) {
+      if (!matched.has(i) && wordMatchesKeyword(typed, keywords[i])) {
+        matched.add(i);
         break;
       }
     }
-  });
-
-  // Accept if at least 60% of correct answer words are matched
-  return matchCount / correctWordsArr.length >= 0.6;
+  }
+  return matched;
 }
 
 export function SpeedRoundGame({ flashcards, onComplete, onBack }: GameProps) {
@@ -59,7 +101,7 @@ export function SpeedRoundGame({ flashcards, onComplete, onBack }: GameProps) {
   const [combo, setCombo] = useState(1);
   const [isFinished, setIsFinished] = useState(false);
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
-  const [showCorrectAnswer, setShowCorrectAnswer] = useState('');
+  const [missedKeywords, setMissedKeywords] = useState<string[]>([]);
   const [isStarted, setIsStarted] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -78,7 +120,7 @@ export function SpeedRoundGame({ flashcards, onComplete, onBack }: GameProps) {
     setTimeLeft(60);
     setIsFinished(false);
     setFeedback(null);
-    setShowCorrectAnswer('');
+    setMissedKeywords([]);
     setIsStarted(false);
   }, [flashcards]);
 
@@ -101,7 +143,6 @@ export function SpeedRoundGame({ flashcards, onComplete, onBack }: GameProps) {
           if (prev <= 1) {
             setIsFinished(true);
             if (timerRef.current) clearInterval(timerRef.current);
-
             return 0;
           }
           return prev - 1;
@@ -126,15 +167,31 @@ export function SpeedRoundGame({ flashcards, onComplete, onBack }: GameProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFinished]);
 
+  const currentCard = shuffledCards[currentCardIndex];
+  const keywords = useMemo(
+    () => currentCard ? extractKeywords(currentCard.definition) : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentCard?.id]
+  );
+
+  // Live tracking — keywords light up as the user types
+  const liveMatched = useMemo(
+    () => getMatchedKeywords(userInput, keywords),
+    [userInput, keywords]
+  );
+
   const handleSubmit = useCallback((e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!userInput.trim() || isFinished || feedback) return;
+    if (!currentCard || keywords.length === 0) return;
 
-    const currentCard = shuffledCards[currentCardIndex];
-    if (!currentCard) return;
+    const matched = getMatchedKeywords(userInput, keywords);
+    const ratio = matched.size / keywords.length;
 
-    const isCorrect = checkAnswer(userInput, currentCard.definition);
     setTotalAttempted(prev => prev + 1);
+
+    // Pass if they hit at least half the keywords
+    const isCorrect = ratio >= 0.5;
 
     if (isCorrect) {
       const points = 100 * combo;
@@ -143,20 +200,20 @@ export function SpeedRoundGame({ flashcards, onComplete, onBack }: GameProps) {
       const newStreak = streak + 1;
       setStreak(newStreak);
       setBestStreak(prev => Math.max(prev, newStreak));
-      setCombo(Math.min(newStreak + 1, 5)); // Max 5x combo
+      setCombo(Math.min(newStreak + 1, 5));
       setFeedback('correct');
+      setMissedKeywords([]);
     } else {
       setStreak(0);
       setCombo(1);
       setFeedback('wrong');
-      setShowCorrectAnswer(currentCard.definition);
+      setMissedKeywords(keywords.filter((_, i) => !matched.has(i)));
     }
 
     setTimeout(() => {
       setFeedback(null);
-      setShowCorrectAnswer('');
+      setMissedKeywords([]);
       setUserInput('');
-      // Cycle through cards, reshuffling if needed
       if (currentCardIndex >= shuffledCards.length - 1) {
         const reshuffled = [...flashcards].sort(() => Math.random() - 0.5);
         setShuffledCards(reshuffled);
@@ -165,8 +222,8 @@ export function SpeedRoundGame({ flashcards, onComplete, onBack }: GameProps) {
         setCurrentCardIndex(prev => prev + 1);
       }
       inputRef.current?.focus();
-    }, isCorrect ? 500 : 1200);
-  }, [userInput, isFinished, feedback, shuffledCards, currentCardIndex, combo, streak, flashcards]);
+    }, isCorrect ? 500 : 1500);
+  }, [userInput, isFinished, feedback, currentCard, keywords, shuffledCards, currentCardIndex, combo, streak, flashcards]);
 
   // Start screen
   if (!isStarted) {
@@ -177,8 +234,8 @@ export function SpeedRoundGame({ flashcards, onComplete, onBack }: GameProps) {
         </div>
         <h2 className="speed-start-title">Speed Round</h2>
         <p className="speed-start-desc">
-          You have 60 seconds. Type the definition for each term shown.
-          Build combos for bonus points!
+          You have 60 seconds. Type what you remember about each definition
+          &mdash; hit the keywords to score! Build combos for bonus points.
         </p>
         <button
           className="game-btn game-btn-primary game-btn-large"
@@ -231,7 +288,6 @@ export function SpeedRoundGame({ flashcards, onComplete, onBack }: GameProps) {
     );
   }
 
-  const currentCard = shuffledCards[currentCardIndex];
   if (!currentCard) return null;
 
   return (
@@ -258,9 +314,21 @@ export function SpeedRoundGame({ flashcards, onComplete, onBack }: GameProps) {
         <div className="speed-card-term">{currentCard.term}</div>
       </div>
 
-      {showCorrectAnswer && (
+      {/* Keyword pills — light up green as user types matching words */}
+      <div className="speed-keywords">
+        <div className="speed-keywords-label">Hit the keywords</div>
+        <div className="speed-keywords-chips">
+          {keywords.map((kw, i) => (
+            <span key={i} className={`speed-keyword-chip ${liveMatched.has(i) ? 'hit' : ''}`}>
+              {kw}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {missedKeywords.length > 0 && (
         <div className="speed-correct-answer">
-          Correct answer: {showCorrectAnswer.length > 100 ? showCorrectAnswer.slice(0, 100) + '...' : showCorrectAnswer}
+          Missed: {missedKeywords.join(', ')}
         </div>
       )}
 
@@ -269,7 +337,7 @@ export function SpeedRoundGame({ flashcards, onComplete, onBack }: GameProps) {
           ref={inputRef}
           type="text"
           className="speed-input"
-          placeholder="Type the definition..."
+          placeholder="Type what you remember..."
           value={userInput}
           onChange={(e) => setUserInput(e.target.value)}
           disabled={feedback !== null}

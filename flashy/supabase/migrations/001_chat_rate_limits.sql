@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS chat_usage (
 );
 
 -- Index for cleanup queries
-CREATE INDEX IF NOT EXISTS idx_chat_usage_reset_date ON chat_usage(reset_date);
+CREATE INDEX IF NOT EXISTS idx_chat_usage_reset_date ON chat_usage(reset_date);                                                    
 
 -- Function to check and increment usage
 -- Returns: { allowed: boolean, remaining: number, limit: number }
