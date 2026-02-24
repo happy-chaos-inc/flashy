@@ -47,6 +47,7 @@ export function EditorPage({ roomId }: EditorPageProps) {
   const [showStudyMode, setShowStudyMode] = useState(false);
   const [showTutorMode, setShowTutorMode] = useState(false);
   const [showLearnGames, setShowLearnGames] = useState(false);
+  const [activeCardIds, setActiveCardIds] = useState<string[] | null>(null);
   // Two-panel layout: left sidebar (flashcards), center (editor); chat is a floating widget
   const [leftSidebarWidth, setLeftSidebarWidth] = useState(MIN_PANEL_WIDTH);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
@@ -473,9 +474,9 @@ export function EditorPage({ roomId }: EditorPageProps) {
           flashcards={flashcards}
           starredCards={starredCards}
           onToggleStar={toggleStar}
-          onStartStudy={() => setShowStudyMode(true)}
-          onStartTutor={() => setShowTutorMode(true)}
-          onStartGames={() => setShowLearnGames(true)}
+          onStartStudy={(cardIds) => { setActiveCardIds(cardIds || null); setShowStudyMode(true); }}
+          onStartTutor={(cardIds) => { setActiveCardIds(cardIds || null); setShowTutorMode(true); }}
+          onStartGames={(cardIds) => { setActiveCardIds(cardIds || null); setShowLearnGames(true); }}
           isAnimating={isAnimatingLeft}
         />
       )}
@@ -546,24 +547,24 @@ export function EditorPage({ roomId }: EditorPageProps) {
 
       {showStudyMode && flashcards.length > 0 && (
         <StudyMode
-          flashcards={flashcards}
+          flashcards={activeCardIds ? flashcards.filter(c => activeCardIds.includes(c.id)) : flashcards}
           starredCards={starredCards}
-          onClose={() => setShowStudyMode(false)}
+          onClose={() => { setShowStudyMode(false); setActiveCardIds(null); }}
         />
       )}
 
       {showTutorMode && (
         <TutorMode
-          flashcards={flashcards}
-          onClose={() => setShowTutorMode(false)}
+          flashcards={activeCardIds ? flashcards.filter(c => activeCardIds.includes(c.id)) : flashcards}
+          onClose={() => { setShowTutorMode(false); setActiveCardIds(null); }}
           roomId={roomId}
         />
       )}
 
       {showLearnGames && flashcards.length >= 3 && (
         <LearnGames
-          flashcards={flashcards}
-          onClose={() => setShowLearnGames(false)}
+          flashcards={activeCardIds ? flashcards.filter(c => activeCardIds.includes(c.id)) : flashcards}
+          onClose={() => { setShowLearnGames(false); setActiveCardIds(null); }}
         />
       )}
     </div>

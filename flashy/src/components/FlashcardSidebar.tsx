@@ -16,7 +16,7 @@ interface FlashcardSidebarProps {
   onToggleStar: (cardId: string, event: React.MouseEvent) => void;
   onStartStudy: (cardIds?: string[]) => void;
   onStartTutor: (cardIds?: string[]) => void;
-  onStartGames?: () => void;
+  onStartGames?: (cardIds?: string[]) => void;
   isAnimating?: boolean;
 }
 
@@ -145,7 +145,7 @@ export function FlashcardSidebar({
               Tutor
             </button>
             {onStartGames && (
-              <button className="toolbar-icon-button" onClick={onStartGames} title="Learning games">
+              <button className="toolbar-icon-button" onClick={() => onStartGames(getSelectedCardIds())} title="Learning games">
                 <Gamepad2 size={20} />
               </button>
             )}
