@@ -1,10 +1,11 @@
-import { MousePointer2, Link2, LayoutGrid } from 'lucide-react';
+import { MousePointer2, Link2, LayoutGrid, Maximize } from 'lucide-react';
 import './CollaborativeCanvas.css';
 
 interface CanvasToolbarProps {
   activeTool: 'select' | 'connect';
   onToolChange: (tool: 'select' | 'connect') => void;
   onAutoArrange: () => void;
+  onCenterView: () => void;
   cardCount: number;
   connectionCount: number;
 }
@@ -13,6 +14,7 @@ export function CanvasToolbar({
   activeTool,
   onToolChange,
   onAutoArrange,
+  onCenterView,
   cardCount,
   connectionCount,
 }: CanvasToolbarProps) {
@@ -35,8 +37,13 @@ export function CanvasToolbar({
 
       <div className="canvas-divider" />
 
-      <button className="canvas-tool-btn" onClick={onAutoArrange} title="Auto-arrange cards">
-        <LayoutGrid size={16} />
+      <button className="canvas-tool-btn canvas-tool-btn-labeled" onClick={onAutoArrange} title="Re-group cards by section">
+        <LayoutGrid size={14} />
+        <span>Re-group</span>
+      </button>
+      <button className="canvas-tool-btn canvas-tool-btn-labeled" onClick={onCenterView} title="Fit all cards in view">
+        <Maximize size={14} />
+        <span>Center</span>
       </button>
 
       <div className="canvas-divider" />

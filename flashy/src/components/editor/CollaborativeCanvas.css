@@ -234,6 +234,14 @@
   color: white;
 }
 
+.canvas-tool-btn-labeled {
+  width: auto;
+  padding: 0 10px;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .canvas-divider {
   width: 1px;
   height: 20px;

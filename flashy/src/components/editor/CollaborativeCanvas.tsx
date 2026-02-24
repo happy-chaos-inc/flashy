@@ -174,11 +174,12 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
 
     let needsLayout = false;
     const sectionNames = Object.keys(sections);
+    let cumulativeX = 50; // Start with left padding
 
     sectionNames.forEach((sectionName, sectionIndex) => {
       const sectionCards = sections[sectionName];
       const cols = Math.ceil(Math.sqrt(sectionCards.length));
-      const sectionOffsetX = sectionIndex * (cols * (CARD_WIDTH + 30) + 100);
+      const sectionWidth = cols * (CARD_WIDTH + 30);
 
       sectionCards.forEach((card, cardIndex) => {
         if (!posMap.has(card.id)) {
@@ -187,12 +188,14 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
           const col = cardIndex % cols;
           const colorIndex = sectionIndex % CARD_COLORS.length;
           posMap.set(card.id, {
-            x: sectionOffsetX + col * (CARD_WIDTH + 30) + 50,
+            x: cumulativeX + col * (CARD_WIDTH + 30),
             y: row * (CARD_HEIGHT + 30) + 80,
             color: CARD_COLORS[colorIndex],
           });
         }
       });
+
+      cumulativeX += sectionWidth + 80; // Gap between sections
     });
 
     if (needsLayout) syncPositions();
@@ -358,7 +361,7 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
     });
   }, []);
 
-  // Auto-arrange cards in a grid
+  // Auto-arrange cards in a grid, grouped by section with no overlaps
   const handleAutoArrange = useCallback(() => {
     const posMap = positionsMapRef.current;
     if (!posMap) return;
@@ -371,10 +374,12 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
     });
 
     const sectionNames = Object.keys(sections);
+    let cumulativeX = 50;
+
     sectionNames.forEach((sectionName, sectionIndex) => {
       const sectionCards = sections[sectionName];
       const cols = Math.ceil(Math.sqrt(sectionCards.length));
-      const sectionOffsetX = sectionIndex * (cols * (CARD_WIDTH + 30) + 100);
+      const sectionWidth = cols * (CARD_WIDTH + 30);
       const colorIndex = sectionIndex % CARD_COLORS.length;
 
       sectionCards.forEach((card, cardIndex) => {
@@ -383,17 +388,58 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
         const existing = posMap.get(card.id) || {};
         posMap.set(card.id, {
           ...existing,
-          x: sectionOffsetX + col * (CARD_WIDTH + 30) + 50,
+          x: cumulativeX + col * (CARD_WIDTH + 30),
           y: row * (CARD_HEIGHT + 30) + 80,
           color: existing.color || CARD_COLORS[colorIndex],
         });
       });
+
+      cumulativeX += sectionWidth + 80;
     });
 
     // Reset view
     panOffsetRef.current = { x: 0, y: 0 };
     setZoom(1);
   }, [flashcards]);
+
+  // Center view on all cards
+  const handleCenterView = useCallback(() => {
+    if (flashcards.length === 0) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Find bounding box of all cards
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    flashcards.forEach(card => {
+      const pos = cardPositions[card.id];
+      if (!pos) return;
+      minX = Math.min(minX, pos.x);
+      minY = Math.min(minY, pos.y);
+      maxX = Math.max(maxX, pos.x + CARD_WIDTH);
+      maxY = Math.max(maxY, pos.y + CARD_HEIGHT);
+    });
+
+    if (minX === Infinity) return;
+
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+    const containerRect = container.getBoundingClientRect();
+    const padding = 60;
+
+    // Fit zoom so all cards are visible
+    const scaleX = (containerRect.width - padding * 2) / contentWidth;
+    const scaleY = (containerRect.height - padding * 2) / contentHeight;
+    const newZoom = Math.min(Math.max(Math.min(scaleX, scaleY), 0.3), 1.5);
+
+    // Center the content
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    panOffsetRef.current = {
+      x: containerRect.width / 2 - centerX * newZoom,
+      y: containerRect.height / 2 - centerY * newZoom,
+    };
+    setZoom(newZoom);
+  }, [flashcards, cardPositions]);
 
   // Get card center for connection lines
   const getCardCenter = (cardId: string): { x: number; y: number } | null => {
@@ -468,6 +514,7 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
         activeTool={activeTool}
         onToolChange={setActiveTool}
         onAutoArrange={handleAutoArrange}
+        onCenterView={handleCenterView}
         cardCount={flashcards.length}
         connectionCount={connections.length}
       />
