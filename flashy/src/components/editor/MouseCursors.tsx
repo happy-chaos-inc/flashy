@@ -33,8 +33,12 @@ export function MouseCursors() {
         const updateCursorStyle = (color: string) => {
           const cursorUrl = getCursorDataUrl(color);
           style.textContent = `
-            body, body * {
-              cursor: url("${cursorUrl}") 0 0, auto !important;
+            body {
+              cursor: url("${cursorUrl}") 0 0, auto;
+            }
+            .tiptap-editor,
+            .cm-editor .cm-content {
+              cursor: url("${cursorUrl}") 0 0, text !important;
             }
           `;
           logger.log('🎨 MouseCursors: Updated global cursor to:', color);

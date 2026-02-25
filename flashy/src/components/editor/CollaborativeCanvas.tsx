@@ -80,6 +80,7 @@ export function CollaborativeCanvas({ isActive, flashcards, roomId }: Collaborat
   const [flippedCards, setFlippedCards] = useState<Set<string>>(new Set());
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [, setPanTick] = useState(0); // Increment to force re-render during pan
   const [activeTool, setActiveTool] = useState<'select' | 'connect'>('select');
 
   const panOffsetRef = useRef({ x: 0, y: 0 });
@@ -266,8 +267,8 @@ export function CollaborativeCanvas({ isActive, flashcards, roomId }: Collaborat
       x: panStartOffsetRef.current.x + dx,
       y: panStartOffsetRef.current.y + dy,
     };
-    // Force re-render
-    setZoom(z => z); // Trick to trigger re-render for pan
+    // Force re-render for pan
+    setPanTick(t => t + 1);
   }, [connectingFrom, screenToWorld]);
 
   const handleBackgroundPointerUp = useCallback((e: React.PointerEvent) => {

@@ -990,20 +990,14 @@
 .chat-widget.dragging {
   opacity: 0.92;
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(0, 0, 0, 0.1);
+  user-select: none;
 }
 
-.chat-widget-drag-handle {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 48px;
+.chat-widget .chat-header {
   cursor: grab;
-  z-index: 10;
-  border-radius: 16px 16px 0 0;
 }
 
-.chat-widget-drag-handle:active {
+.chat-widget.dragging .chat-header {
   cursor: grabbing;
 }
 
@@ -1053,7 +1047,7 @@
 
 /* Left resize handle for flashcard sidebar */
 .resize-handle-left {
-  width: 48px;
+  width: 32px;
   background: transparent;
   cursor: ew-resize;
   position: fixed;

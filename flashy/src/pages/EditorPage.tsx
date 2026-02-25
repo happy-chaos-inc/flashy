@@ -176,7 +176,15 @@ export function EditorPage({ roomId }: EditorPageProps) {
     }
   }, []);
 
-  const handleChatDragStart = useCallback((e: React.PointerEvent) => {
+  const handleChatPointerDown = useCallback((e: React.PointerEvent) => {
+    // Only drag from the header area (~top 48px), skip if clicking buttons/inputs
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('input') || target.closest('textarea') || target.closest('select')) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relativeY = e.clientY - rect.top;
+    if (relativeY > 48) return;
+
     e.currentTarget.setPointerCapture(e.pointerId);
     chatDragRef.current = {
       isDragging: true,
@@ -188,7 +196,7 @@ export function EditorPage({ roomId }: EditorPageProps) {
     setChatDragging(true);
   }, [fabPosition]);
 
-  const handleChatDragMove = useCallback((e: React.PointerEvent) => {
+  const handleChatPointerMove = useCallback((e: React.PointerEvent) => {
     const drag = chatDragRef.current;
     if (!drag || !drag.isDragging) return;
 
@@ -198,14 +206,13 @@ export function EditorPage({ roomId }: EditorPageProps) {
     const newRight = drag.startRight - dx;
     const newBottom = drag.startBottom - dy;
 
-    // Clamp to viewport bounds (keep widget visible)
     const clampedRight = Math.max(8, Math.min(window.innerWidth - 200, newRight));
     const clampedBottom = Math.max(8, Math.min(window.innerHeight - 100, newBottom));
 
     setFabPosition({ right: clampedRight, bottom: clampedBottom });
   }, []);
 
-  const handleChatDragEnd = useCallback(() => {
+  const handleChatPointerUp = useCallback(() => {
     if (!chatDragRef.current) return;
     chatDragRef.current = null;
     setChatDragging(false);
@@ -605,7 +612,7 @@ export function EditorPage({ roomId }: EditorPageProps) {
       {/* Left Resize Handle / Collapse Toggle */}
       <div
         className={`resize-handle-left ${isAnimatingLeft ? 'animating' : ''} ${leftCollapsed ? 'collapsed' : ''}`}
-        style={{ left: leftCollapsed ? '0px' : `calc(var(--left-sidebar-width) + var(--margin-left) + var(--margin-gap) / 2 - 24px)` }}
+        style={{ left: leftCollapsed ? '0px' : `calc(var(--left-sidebar-width) + var(--margin-left) + var(--margin-gap) / 2 - 8px)` }}
         onMouseDown={leftCollapsed ? undefined : handleLeftMouseDown}
       >
         {!leftCollapsed && <div className={`resize-stick ${isAnimatingLeft ? 'animating' : ''}`} />}
@@ -657,13 +664,13 @@ export function EditorPage({ roomId }: EditorPageProps) {
 
       {/* Floating Chat Widget */}
       {chatOpen ? (
-        <div className={`chat-widget${chatDragging ? ' dragging' : ''}`} style={{ bottom: fabPosition.bottom, right: fabPosition.right }}>
-          <div
-            className="chat-widget-drag-handle"
-            onPointerDown={handleChatDragStart}
-            onPointerMove={handleChatDragMove}
-            onPointerUp={handleChatDragEnd}
-          />
+        <div
+          className={`chat-widget${chatDragging ? ' dragging' : ''}`}
+          style={{ bottom: fabPosition.bottom, right: fabPosition.right }}
+          onPointerDown={handleChatPointerDown}
+          onPointerMove={handleChatPointerMove}
+          onPointerUp={handleChatPointerUp}
+        >
           <ChatSidebar roomId={roomId} onClose={() => setChatOpen(false)} />
         </div>
       ) : (

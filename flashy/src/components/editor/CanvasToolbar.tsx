@@ -19,7 +19,7 @@ export function CanvasToolbar({
   connectionCount,
 }: CanvasToolbarProps) {
   return (
-    <div className="canvas-toolbar">
+    <div className="canvas-toolbar" onPointerDown={(e) => e.stopPropagation()}>
       <button
         className={`canvas-tool-btn ${activeTool === 'select' ? 'active' : ''}`}
         onClick={() => onToolChange('select')}
