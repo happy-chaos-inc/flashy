@@ -35,6 +35,11 @@ export class SimpleSupabaseProvider {
   private pendingUpdates: Uint8Array[] = [];
   private maxPendingUpdates: number = 100;
 
+  // Update batching — accumulate rapid updates and send as one
+  private updateBatch: Uint8Array[] = [];
+  private batchTimer: NodeJS.Timeout | null = null;
+  private readonly BATCH_INTERVAL = 50; // ms — batch updates within 50ms
+
   // Periodic resync
   private resyncTimer: NodeJS.Timeout | null = null;
 
@@ -219,7 +224,12 @@ export class SimpleSupabaseProvider {
           this.startResync();
 
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          logger.error('SimpleProvider:', status);
+          // Log with diagnostic info on first occurrence
+          if (this.reconnectAttempts === 0) {
+            logger.warn('SimpleProvider:', status, '— channel:', this.channelName,
+              'attempt:', this.reconnectAttempts + 1,
+              '(falling back to database sync)');
+          }
           this.connected = false;
           this.emit('status', { status: 'disconnected' });
           this.stopResync();
@@ -328,7 +338,7 @@ export class SimpleSupabaseProvider {
     logger.log('SimpleProvider: Setting up local broadcasting...');
     this.broadcastingSetup = true;
 
-    // Broadcast local document changes
+    // Broadcast local document changes (batched to stay within rate limits)
     this.doc.on('update', (update: Uint8Array, origin: any) => {
       // Don't broadcast updates that came from remote
       if (origin === this) return;
@@ -337,25 +347,34 @@ export class SimpleSupabaseProvider {
         // Queue for later if disconnected
         if (this.pendingUpdates.length < this.maxPendingUpdates) {
           this.pendingUpdates.push(update);
-          logger.log('SimpleProvider: Queued update (disconnected)');
-        } else {
-          logger.warn('SimpleProvider: Pending queue full, dropping update');
         }
         return;
       }
 
-      try {
-        this.channel.send({
-          type: 'broadcast',
-          event: 'doc-update',
-          payload: { update: Array.from(update) }
-        });
-      } catch (error) {
-        // Queue on send failure
-        if (this.pendingUpdates.length < this.maxPendingUpdates) {
-          this.pendingUpdates.push(update);
-        }
-        logger.error('SimpleProvider: Failed to broadcast, queued', error);
+      // Accumulate updates and flush after a short delay
+      this.updateBatch.push(update);
+
+      if (!this.batchTimer) {
+        this.batchTimer = setTimeout(() => {
+          this.batchTimer = null;
+          if (this.updateBatch.length === 0) return;
+
+          // Merge all batched updates into one
+          const merged = Y.mergeUpdates(this.updateBatch);
+          this.updateBatch = [];
+
+          try {
+            this.channel.send({
+              type: 'broadcast',
+              event: 'doc-update',
+              payload: { update: Array.from(merged) }
+            });
+          } catch (error) {
+            if (this.pendingUpdates.length < this.maxPendingUpdates) {
+              this.pendingUpdates.push(merged);
+            }
+          }
+        }, this.BATCH_INTERVAL);
       }
     });
 

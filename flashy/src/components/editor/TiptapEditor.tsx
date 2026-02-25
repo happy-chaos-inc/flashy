@@ -8,7 +8,7 @@ import { Extension } from '@tiptap/core';
 import { useEffect, useState } from 'react';
 import { collaborationManager } from '../../lib/CollaborationManager';
 import { logger } from '../../lib/logger';
-import { Bold, Italic, List, ListOrdered, Code, Heading1, Heading2 } from 'lucide-react';
+import { Bold, Italic, List, ListOrdered, Braces, Heading1, Heading2 } from 'lucide-react';
 import './TiptapEditor.css';
 import * as Y from 'yjs';
 
@@ -372,7 +372,7 @@ export function TiptapEditor({ scrollTarget, isActive = true }: TiptapEditorProp
               className={editor.isActive('code') ? 'is-active' : ''}
               title="Inline Code (Ctrl+E)"
             >
-              <Code size={18} />
+              <Braces size={18} />
             </button>
             <div className="toolbar-divider" />
             <button

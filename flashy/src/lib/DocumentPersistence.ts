@@ -8,7 +8,7 @@ import * as Y from 'yjs';
 import { supabase } from '../config/supabase';
 import { logger } from './logger';
 
-const SAVE_DEBOUNCE_MS = 2000; // Save 2 seconds after last change
+const SAVE_DEBOUNCE_MS = 800; // Save quickly for faster cross-peer sync
 
 // Safe base64 encoding for large Uint8Arrays (avoids stack overflow)
 function uint8ArrayToBase64(bytes: Uint8Array): string {

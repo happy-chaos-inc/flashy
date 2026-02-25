@@ -71,6 +71,15 @@ export function EditorPage({ roomId }: EditorPageProps) {
     startBottom: number;
   } | null>(null);
   const [fabDragging, setFabDragging] = useState(false);
+  // Chat widget drag state (reuses fabPosition for location)
+  const chatDragRef = useRef<{
+    isDragging: boolean;
+    startX: number;
+    startY: number;
+    startRight: number;
+    startBottom: number;
+  } | null>(null);
+  const [chatDragging, setChatDragging] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const infoRef = useRef<HTMLDivElement>(null);
   const [starredCards, setStarredCards] = useState<Set<string>>(() => {
@@ -165,6 +174,46 @@ export function EditorPage({ roomId }: EditorPageProps) {
       // It was a click — open chat
       setChatOpen(true);
     }
+  }, []);
+
+  const handleChatDragStart = useCallback((e: React.PointerEvent) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    chatDragRef.current = {
+      isDragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      startRight: fabPosition.right,
+      startBottom: fabPosition.bottom,
+    };
+    setChatDragging(true);
+  }, [fabPosition]);
+
+  const handleChatDragMove = useCallback((e: React.PointerEvent) => {
+    const drag = chatDragRef.current;
+    if (!drag || !drag.isDragging) return;
+
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+
+    const newRight = drag.startRight - dx;
+    const newBottom = drag.startBottom - dy;
+
+    // Clamp to viewport bounds (keep widget visible)
+    const clampedRight = Math.max(8, Math.min(window.innerWidth - 200, newRight));
+    const clampedBottom = Math.max(8, Math.min(window.innerHeight - 100, newBottom));
+
+    setFabPosition({ right: clampedRight, bottom: clampedBottom });
+  }, []);
+
+  const handleChatDragEnd = useCallback(() => {
+    if (!chatDragRef.current) return;
+    chatDragRef.current = null;
+    setChatDragging(false);
+
+    setFabPosition(pos => {
+      localStorage.setItem('flashy-chat-fab-position', JSON.stringify(pos));
+      return pos;
+    });
   }, []);
 
   const handleModeChange = async (mode: EditorMode) => {
@@ -608,7 +657,13 @@ export function EditorPage({ roomId }: EditorPageProps) {
 
       {/* Floating Chat Widget */}
       {chatOpen ? (
-        <div className="chat-widget" style={{ bottom: fabPosition.bottom, right: fabPosition.right }}>
+        <div className={`chat-widget${chatDragging ? ' dragging' : ''}`} style={{ bottom: fabPosition.bottom, right: fabPosition.right }}>
+          <div
+            className="chat-widget-drag-handle"
+            onPointerDown={handleChatDragStart}
+            onPointerMove={handleChatDragMove}
+            onPointerUp={handleChatDragEnd}
+          />
           <ChatSidebar roomId={roomId} onClose={() => setChatOpen(false)} />
         </div>
       ) : (

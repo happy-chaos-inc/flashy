@@ -182,14 +182,17 @@ class CollaborationManager {
       // Connect first to sync awareness states
       this.provider.connect();
 
-      // Start/stop database polling based on channel health
+      // Database polling as safety net — always running, speed depends on channel health
+      // Connected: slow poll (5s) catches any missed broadcasts
+      // Disconnected: fast poll (2s) is the primary sync mechanism
+      this.persistence?.startPolling(5_000);
+
       this.provider.on('status', ({ status }: { status: string }) => {
         if (status === 'disconnected' || status === 'failed') {
-          // Channel is down — fall back to database polling
-          this.persistence?.startPolling(15_000);
+          this.persistence?.startPolling(2_000);
         } else if (status === 'connected') {
-          // Channel recovered — stop polling, do one last DB sync
-          this.persistence?.stopPolling();
+          // Channel recovered — slower poll as safety net, plus one immediate sync
+          this.persistence?.startPolling(5_000);
           this.persistence?.loadFromDatabase().catch(() => {});
         }
       });

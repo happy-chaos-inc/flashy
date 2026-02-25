@@ -16,7 +16,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
   realtime: {
     params: {
-      eventsPerSecond: 100, // Higher limit for 4 users typing fast
+      eventsPerSecond: 100,
     },
   },
   global: {
