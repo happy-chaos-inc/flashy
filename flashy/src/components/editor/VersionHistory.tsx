@@ -21,7 +21,7 @@ export function VersionHistory({ onRestore, roomId }: VersionHistoryProps) {
   const [loading, setLoading] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState<Version | null>(null);
 
-  const loadVersions = useCallback(async () => {
+  const loadVersions = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
       // Get all versions from last 7 days
@@ -34,23 +34,27 @@ export function VersionHistory({ onRestore, roomId }: VersionHistoryProps) {
         .eq('document_id', documentId)
         .gte('created_at', sevenDaysAgo)
         .order('created_at', { ascending: false })
-        .limit(50); // Show up to 50 snapshots
+        .limit(50)
+        .abortSignal(signal!); // Cancel on unmount
 
       if (error) throw error;
 
       // Show all snapshots (no daily grouping)
       setVersions(data || []);
-    } catch (error) {
-      logger.error('❌ Error loading versions:', error);
+    } catch (error: any) {
+      // Ignore abort errors — component just unmounted
+      if (error?.name === 'AbortError') return;
+      logger.error('Error loading versions:', error);
     } finally {
       setLoading(false);
     }
   }, [roomId]);
 
   useEffect(() => {
-    if (isOpen) {
-      loadVersions();
-    }
+    if (!isOpen) return;
+    const controller = new AbortController();
+    loadVersions(controller.signal);
+    return () => controller.abort();
   }, [isOpen, loadVersions]);
 
   const handleRestoreClick = (version: Version) => {

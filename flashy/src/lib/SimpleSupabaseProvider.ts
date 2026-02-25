@@ -76,11 +76,11 @@ export class SimpleSupabaseProvider {
 
     logger.log('SimpleProvider: Connecting...');
 
-    // Cleanup old channel if exists
+    // Cleanup old channel if exists — must fully remove before creating a new one
     if (this.channel) {
       logger.log('SimpleProvider: Cleaning up old channel...');
       try {
-        this.channel.unsubscribe();
+        this.supabase.removeChannel(this.channel);
       } catch {
         // Ignore cleanup errors
       }
