@@ -217,7 +217,6 @@ export function CollaborativeCanvas({ isActive, flashcards, roomId }: Collaborat
   const handleCardPointerUp = useCallback((e: React.PointerEvent, cardId?: string) => {
     if (connectingFrom && cardId && cardId !== connectingFrom) {
       // Create connection (toggle: remove if exists)
-      const connId = `${connectingFrom}-${cardId}`;
       setConnections(prev => {
         const exists = prev.some(c => c.from === connectingFrom && c.to === cardId);
         const updated = exists
