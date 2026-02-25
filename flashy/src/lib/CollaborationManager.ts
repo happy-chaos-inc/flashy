@@ -143,16 +143,27 @@ class CollaborationManager {
 
       this.ydoc = new Doc();
 
-      // Track visit time for staleness detection
+      // Staleness detection: if IndexedDB is old (>1hr), it may be from a
+      // different document lineage and merging it with the server state would
+      // produce garbage (duplicate content). Delete it so we start fresh from
+      // Supabase. If Supabase also fails, the auto-save guard (below) prevents
+      // overwriting good server data with an empty doc.
       const lastVisitKey = `flashy_last_visit_${roomId}`;
+      const lastVisit = localStorage.getItem(lastVisitKey);
       const now = Date.now();
-      localStorage.setItem(lastVisitKey, now.toString());
-
-      // Keep IndexedDB as a safety net — never delete it before confirming
-      // the database has good data. CRDT merge handles any conflicts.
+      const oneHour = 60 * 60 * 1000;
       const indexedDbName = `flashy-doc-${roomId}`;
 
-      // Add IndexedDB persistence for instant local sync (per room)
+      if (lastVisit && (now - parseInt(lastVisit)) > oneHour) {
+        logger.log('🧹 IndexedDB is stale (>1hr old), clearing to avoid merge conflicts...');
+        try { indexedDB.deleteDatabase(indexedDbName); } catch {}
+        logger.log('✅ Stale IndexedDB cleared — will load fresh from Supabase');
+      }
+
+      // Update last visit timestamp
+      localStorage.setItem(lastVisitKey, now.toString());
+
+      // Add IndexedDB persistence for local sync (per room)
       this.indexeddbProvider = new IndexeddbPersistence(indexedDbName, this.ydoc);
       this.indexeddbProvider.on('synced', () => {
         logger.log('💾 IndexedDB synced - local data loaded');
