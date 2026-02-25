@@ -377,7 +377,7 @@ export function ChatSidebar({ roomId, onClose }: ChatSidebarProps) {
           // Add note about the dropped images
           const lastMsg = body.messages[body.messages.length - 1];
           if (lastMsg) {
-            lastMsg.content += '\n\n(Images were attached but are too large to process. Please describe what you see or try a smaller image.)';
+            lastMsg.content += '\n\n(File attachments were too large to send directly. The extracted text content is still available in the study material context.)';
           }
         }
       }
@@ -893,10 +893,21 @@ export function ChatSidebar({ roomId, onClose }: ChatSidebarProps) {
 
       try {
         if (file.type === 'application/pdf') {
+          // Extract text for the system prompt (works well for text-based PDFs)
           extractedText = await extractPdfText(file);
           if (extractedText.trim()) {
             extractedText = `\n\n--- Content from ${file.name} ---\n${extractedText}`;
           }
+          // Also send raw PDF as base64 so Claude can read it natively
+          // (handles image-heavy PDFs like lecture slides where text extraction is sparse)
+          const pdfArrayBuffer = await file.arrayBuffer();
+          const pdfBytes = new Uint8Array(pdfArrayBuffer);
+          let binary = '';
+          for (let j = 0; j < pdfBytes.length; j++) {
+            binary += String.fromCharCode(pdfBytes[j]);
+          }
+          const pdfBase64 = btoa(binary);
+          processed = { base64: pdfBase64, mimeType: 'application/pdf', name: file.name };
         } else if (isImage) {
           const { base64, mimeType } = await processImageForApi(file);
           processed = { base64, mimeType, name: file.name };

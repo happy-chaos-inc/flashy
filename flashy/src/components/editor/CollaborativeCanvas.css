@@ -256,34 +256,6 @@
   white-space: nowrap;
 }
 
-/* Remote cursors */
-.canvas-remote-cursor {
-  position: absolute;
-  pointer-events: none;
-  z-index: 200;
-  transition: left 0.1s, top 0.1s;
-}
-
-.canvas-remote-cursor-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  border: 2px solid white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.canvas-remote-cursor-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: white;
-  padding: 1px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
-  position: absolute;
-  top: 14px;
-  left: 8px;
-}
-
 /* Zoom indicator */
 .canvas-zoom-indicator {
   position: absolute;

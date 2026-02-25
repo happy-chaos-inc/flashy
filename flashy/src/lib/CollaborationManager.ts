@@ -182,6 +182,18 @@ class CollaborationManager {
       // Connect first to sync awareness states
       this.provider.connect();
 
+      // Start/stop database polling based on channel health
+      this.provider.on('status', ({ status }: { status: string }) => {
+        if (status === 'disconnected' || status === 'failed') {
+          // Channel is down — fall back to database polling
+          this.persistence?.startPolling(15_000);
+        } else if (status === 'connected') {
+          // Channel recovered — stop polling, do one last DB sync
+          this.persistence?.stopPolling();
+          this.persistence?.loadFromDatabase().catch(() => {});
+        }
+      });
+
       // Wait for initial awareness sync, then check room capacity
       await this.checkRoomCapacity();
 

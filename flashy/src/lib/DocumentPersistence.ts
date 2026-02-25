@@ -31,6 +31,7 @@ export class DocumentPersistence {
   private saveTimeout: NodeJS.Timeout | null = null;
   private isSaving = false;
   private saveCount: number = 0; // Track number of saves for snapshot sampling
+  private pollTimer: NodeJS.Timeout | null = null;
 
   constructor(doc: Y.Doc, roomId: string = 'default') {
     this.doc = doc;
@@ -253,11 +254,50 @@ export class DocumentPersistence {
   }
 
   /**
+   * Start polling the database for updates (fallback when realtime channel is down)
+   * Loads latest state and merges with local Y.Doc every interval
+   */
+  startPolling(intervalMs: number = 15_000): void {
+    this.stopPolling();
+    logger.log('📡 Database polling started (channel fallback, every', intervalMs / 1000, 's)');
+
+    this.pollTimer = setInterval(async () => {
+      try {
+        const { data, error } = await supabase.rpc('get_document', {
+          p_document_id: this.documentId,
+        });
+
+        if (error || !data || !Array.isArray(data) || data.length === 0) return;
+
+        const doc = data[0];
+        if (doc.yjs_state) {
+          const stateVector = Uint8Array.from(atob(doc.yjs_state), c => c.charCodeAt(0));
+          Y.applyUpdate(this.doc, stateVector);
+        }
+      } catch {
+        // Non-critical — will retry on next interval
+      }
+    }, intervalMs);
+  }
+
+  /**
+   * Stop database polling (when realtime channel recovers)
+   */
+  stopPolling(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+      logger.log('📡 Database polling stopped (channel recovered)');
+    }
+  }
+
+  /**
    * Clean up
    */
   destroy(): void {
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
     }
+    this.stopPolling();
   }
 }

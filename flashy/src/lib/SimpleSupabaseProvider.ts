@@ -1,6 +1,6 @@
 /**
  * Simple Supabase Provider for Yjs
- * With auto-reconnection and offline queue support
+ * With auto-reconnection, offline queue, and periodic resync
  */
 import * as Y from 'yjs';
 import * as awarenessProtocol from 'y-protocols/awareness';
@@ -11,6 +11,9 @@ import { logger } from './logger';
 const INITIAL_RECONNECT_DELAY = 1000; // 1 second
 const MAX_RECONNECT_DELAY = 30000; // 30 seconds
 const MAX_RECONNECT_ATTEMPTS = 10;
+
+// Periodic resync — catches missed broadcast messages
+const RESYNC_INTERVAL = 10_000; // 10 seconds
 
 export class SimpleSupabaseProvider {
   doc: Y.Doc;
@@ -26,10 +29,14 @@ export class SimpleSupabaseProvider {
   private reconnectAttempts: number = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private isDestroyed: boolean = false;
+  private lastConnectedAt: number = 0;
 
   // Offline queue - store updates when disconnected
   private pendingUpdates: Uint8Array[] = [];
   private maxPendingUpdates: number = 100;
+
+  // Periodic resync
+  private resyncTimer: NodeJS.Timeout | null = null;
 
   constructor(doc: Y.Doc, supabase: SupabaseClient<any>, channelName: string) {
     this.doc = doc;
@@ -141,6 +148,32 @@ export class SimpleSupabaseProvider {
       }
     });
 
+    // Listen for state vector broadcasts (periodic resync)
+    this.channel.on('broadcast', { event: 'state-vector' }, ({ payload }: any) => {
+      try {
+        if (payload.clientId === this.doc.clientID) return;
+
+        // Compute what the remote peer is missing and send it
+        const remoteStateVector = new Uint8Array(payload.sv);
+        const missingUpdate = Y.encodeStateAsUpdate(this.doc, remoteStateVector);
+
+        // Only send if there's actually something missing (> 2 bytes = non-empty update)
+        if (missingUpdate.length > 2) {
+          logger.log('SimpleProvider: Peer missing', missingUpdate.length, 'bytes, sending catch-up');
+          this.channel.send({
+            type: 'broadcast',
+            event: 'sync-response',
+            payload: {
+              update: Array.from(missingUpdate),
+              targetClientId: payload.clientId
+            }
+          });
+        }
+      } catch (error) {
+        logger.error('SimpleProvider: Failed to handle state-vector', error);
+      }
+    });
+
     // Listen for awareness updates (cursors, presence)
     this.channel.on('broadcast', { event: 'awareness' }, ({ payload }: any) => {
       try {
@@ -158,7 +191,15 @@ export class SimpleSupabaseProvider {
 
         if (status === 'SUBSCRIBED') {
           this.connected = true;
-          this.reconnectAttempts = 0; // Reset on successful connection
+          this.lastConnectedAt = Date.now();
+          // Only reset attempts if we stayed connected for at least 30s (avoid rapid cycles)
+          if (this.reconnectAttempts > 0) {
+            setTimeout(() => {
+              if (this.connected) this.reconnectAttempts = 0;
+            }, 30_000);
+          } else {
+            this.reconnectAttempts = 0;
+          }
           logger.log('SimpleProvider: Connected!');
 
           this.emit('status', { status: 'connected' });
@@ -174,10 +215,14 @@ export class SimpleSupabaseProvider {
           // Flush any pending updates
           this.flushPendingUpdates();
 
+          // Start periodic resync
+          this.startResync();
+
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           logger.error('SimpleProvider:', status);
           this.connected = false;
           this.emit('status', { status: 'disconnected' });
+          this.stopResync();
 
           // Auto-reconnect
           this.scheduleReconnect();
@@ -185,6 +230,7 @@ export class SimpleSupabaseProvider {
         } else if (status === 'CLOSED') {
           this.connected = false;
           this.emit('status', { status: 'disconnected' });
+          this.stopResync();
 
           // Auto-reconnect if not intentionally destroyed
           if (!this.isDestroyed) {
@@ -195,9 +241,39 @@ export class SimpleSupabaseProvider {
         logger.error('SimpleProvider: Error in subscription handler', error);
         this.connected = false;
         this.emit('status', { status: 'disconnected' });
+        this.stopResync();
         this.scheduleReconnect();
       }
     });
+  }
+
+  private startResync(): void {
+    this.stopResync();
+    this.resyncTimer = setInterval(() => {
+      if (!this.connected || this.isDestroyed) return;
+
+      try {
+        // Broadcast our state vector so peers can detect if we're missing anything
+        const sv = Y.encodeStateVector(this.doc);
+        this.channel.send({
+          type: 'broadcast',
+          event: 'state-vector',
+          payload: {
+            sv: Array.from(sv),
+            clientId: this.doc.clientID,
+          }
+        });
+      } catch {
+        // Non-critical
+      }
+    }, RESYNC_INTERVAL);
+  }
+
+  private stopResync(): void {
+    if (this.resyncTimer) {
+      clearInterval(this.resyncTimer);
+      this.resyncTimer = null;
+    }
   }
 
   private scheduleReconnect(): void {
@@ -304,6 +380,8 @@ export class SimpleSupabaseProvider {
 
   disconnect(): void {
     logger.log('SimpleProvider: Disconnecting...');
+
+    this.stopResync();
 
     // Cancel pending reconnect
     if (this.reconnectTimer) {

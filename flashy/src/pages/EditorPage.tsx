@@ -55,6 +55,22 @@ export function EditorPage({ roomId }: EditorPageProps) {
   const [isAnimatingLeft, setIsAnimatingLeft] = useState(false);
   const [dragStartX, setDragStartX] = useState<number | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [fabPosition, setFabPosition] = useState<{ bottom: number; right: number }>(() => {
+    try {
+      const saved = localStorage.getItem('flashy-chat-fab-position');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return { bottom: 24, right: 24 };
+  });
+  const fabDragRef = useRef<{
+    isDragging: boolean;
+    hasMoved: boolean;
+    startX: number;
+    startY: number;
+    startRight: number;
+    startBottom: number;
+  } | null>(null);
+  const [fabDragging, setFabDragging] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const infoRef = useRef<HTMLDivElement>(null);
   const [starredCards, setStarredCards] = useState<Set<string>>(() => {
@@ -94,6 +110,62 @@ export function EditorPage({ roomId }: EditorPageProps) {
       setTimeout(() => setCopied(false), 2000);
     }
   };
+
+  const handleFabPointerDown = useCallback((e: React.PointerEvent) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    fabDragRef.current = {
+      isDragging: true,
+      hasMoved: false,
+      startX: e.clientX,
+      startY: e.clientY,
+      startRight: fabPosition.right,
+      startBottom: fabPosition.bottom,
+    };
+    setFabDragging(true);
+  }, [fabPosition]);
+
+  const handleFabPointerMove = useCallback((e: React.PointerEvent) => {
+    const drag = fabDragRef.current;
+    if (!drag || !drag.isDragging) return;
+
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+
+    // Only start moving if we've exceeded the 5px threshold
+    if (!drag.hasMoved && Math.sqrt(dx * dx + dy * dy) < 5) return;
+    drag.hasMoved = true;
+
+    // Moving right decreases "right", moving down decreases "bottom"
+    const newRight = drag.startRight - dx;
+    const newBottom = drag.startBottom - dy;
+
+    // Clamp to viewport bounds (keep FAB fully visible)
+    const fabSize = 56;
+    const clampedRight = Math.max(8, Math.min(window.innerWidth - fabSize - 8, newRight));
+    const clampedBottom = Math.max(8, Math.min(window.innerHeight - fabSize - 8, newBottom));
+
+    setFabPosition({ right: clampedRight, bottom: clampedBottom });
+  }, []);
+
+  const handleFabPointerUp = useCallback((e: React.PointerEvent) => {
+    const drag = fabDragRef.current;
+    if (!drag) return;
+
+    const wasDragged = drag.hasMoved;
+    fabDragRef.current = null;
+    setFabDragging(false);
+
+    if (wasDragged) {
+      // Save position to localStorage using the latest state via functional read
+      setFabPosition(pos => {
+        localStorage.setItem('flashy-chat-fab-position', JSON.stringify(pos));
+        return pos;
+      });
+    } else {
+      // It was a click — open chat
+      setChatOpen(true);
+    }
+  }, []);
 
   const handleModeChange = async (mode: EditorMode) => {
     // No sync needed - Y.XmlFragment is the only source of truth
@@ -530,17 +602,24 @@ export function EditorPage({ roomId }: EditorPageProps) {
           <MarkdownEditor scrollTarget={scrollTarget} isActive={editorMode === 'markdown'} />
         </div>
         <div className={`editor-panel ${editorMode === 'canvas' ? 'active' : 'hidden'}`}>
-          <CollaborativeCanvas isActive={editorMode === 'canvas'} flashcards={flashcards} />
+          <CollaborativeCanvas isActive={editorMode === 'canvas'} flashcards={flashcards} roomId={roomId} />
         </div>
       </div>
 
       {/* Floating Chat Widget */}
       {chatOpen ? (
-        <div className="chat-widget">
+        <div className="chat-widget" style={{ bottom: fabPosition.bottom, right: fabPosition.right }}>
           <ChatSidebar roomId={roomId} onClose={() => setChatOpen(false)} />
         </div>
       ) : (
-        <button className="chat-fab" onClick={() => setChatOpen(true)} title="Open AI chat">
+        <button
+          className={`chat-fab${fabDragging ? ' dragging' : ''}`}
+          style={{ bottom: fabPosition.bottom, right: fabPosition.right }}
+          onPointerDown={handleFabPointerDown}
+          onPointerMove={handleFabPointerMove}
+          onPointerUp={handleFabPointerUp}
+          title="Open AI chat"
+        >
           <MessageSquare size={24} />
         </button>
       )}

@@ -1,8 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Map as YMap } from 'yjs';
-import { collaborationManager } from '../../lib/CollaborationManager';
 import { CanvasToolbar } from './CanvasToolbar';
-import { logger } from '../../lib/logger';
 import { Layers } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import './CollaborativeCanvas.css';
@@ -28,24 +25,50 @@ interface Connection {
   label?: string;
 }
 
+interface CanvasData {
+  positions: Record<string, CardPosition>;
+  connections: Connection[];
+}
+
 interface CollaborativeCanvasProps {
   isActive: boolean;
   flashcards: Flashcard[];
-}
-
-interface RemoteCursor {
-  x: number;
-  y: number;
-  name: string;
-  color: string;
-  dragging?: string;
+  roomId: string;
 }
 
 const CARD_WIDTH = 200;
 const CARD_HEIGHT = 140;
 const CARD_COLORS = ['#B399D4', '#7C9CE5', '#E57C7C', '#E5B97C', '#7CE5A3', '#E57CC8', '#7CE5D4', '#C5E57C'];
 
-export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanvasProps) {
+function getStorageKey(roomId: string): string {
+  return `flashy-canvas-${roomId}`;
+}
+
+function loadCanvasData(roomId: string): CanvasData {
+  try {
+    const raw = localStorage.getItem(getStorageKey(roomId));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        positions: parsed.positions || {},
+        connections: parsed.connections || [],
+      };
+    }
+  } catch {
+    // Corrupted data, start fresh
+  }
+  return { positions: {}, connections: [] };
+}
+
+function saveCanvasData(roomId: string, data: CanvasData): void {
+  try {
+    localStorage.setItem(getStorageKey(roomId), JSON.stringify(data));
+  } catch {
+    // localStorage full or unavailable
+  }
+}
+
+export function CollaborativeCanvas({ isActive, flashcards, roomId }: CollaborativeCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -57,20 +80,31 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
   const [flippedCards, setFlippedCards] = useState<Set<string>>(new Set());
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
-  const [remoteCursors, setRemoteCursors] = useState<Map<number, RemoteCursor>>(new Map());
   const [activeTool, setActiveTool] = useState<'select' | 'connect'>('select');
 
-  const positionsMapRef = useRef<YMap<any> | null>(null);
-  const connectionsMapRef = useRef<YMap<any> | null>(null);
   const panOffsetRef = useRef({ x: 0, y: 0 });
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0 });
   const panStartOffsetRef = useRef({ x: 0, y: 0 });
   const dragOffsetRef = useRef({ x: 0, y: 0 });
-  const providerRef = useRef<any>(null);
   const zoomRef = useRef(1);
+  // Keep a mutable ref for positions so save helpers always see latest
+  const positionsRef = useRef<Record<string, CardPosition>>({});
+  const connectionsRef = useRef<Connection[]>([]);
 
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+
+  // Keep refs in sync with state
+  useEffect(() => { positionsRef.current = cardPositions; }, [cardPositions]);
+  useEffect(() => { connectionsRef.current = connections; }, [connections]);
+
+  // Save to localStorage whenever positions or connections change
+  const persistToStorage = useCallback(() => {
+    saveCanvasData(roomId, {
+      positions: positionsRef.current,
+      connections: connectionsRef.current,
+    });
+  }, [roomId]);
 
   const screenToWorld = useCallback((screenX: number, screenY: number): { x: number; y: number } => {
     const container = containerRef.current;
@@ -82,87 +116,20 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
     };
   }, []);
 
-  // Sync positions from Y.Map
-  const syncPositions = useCallback(() => {
-    const posMap = positionsMapRef.current;
-    if (!posMap) return;
-    const positions: Record<string, CardPosition> = {};
-    posMap.forEach((val: any, key: string) => {
-      positions[key] = val;
-    });
-    setCardPositions(positions);
-  }, []);
-
-  // Sync connections from Y.Map
-  const syncConnections = useCallback(() => {
-    const connMap = connectionsMapRef.current;
-    if (!connMap) return;
-    const conns: Connection[] = [];
-    connMap.forEach((val: any) => {
-      conns.push(val);
-    });
-    setConnections(conns);
-  }, []);
-
-  // Connect to Yjs
+  // Load from localStorage on mount
   useEffect(() => {
-    let cleanup: (() => void) | undefined;
-
-    const init = async () => {
-      try {
-        const { ydoc, provider } = await collaborationManager.connect();
-        providerRef.current = provider;
-
-        const posMap = ydoc.getMap('canvas-card-positions');
-        const connMap = ydoc.getMap('canvas-connections');
-        positionsMapRef.current = posMap;
-        connectionsMapRef.current = connMap;
-
-        const posObserver = () => syncPositions();
-        const connObserver = () => syncConnections();
-        posMap.observe(posObserver);
-        connMap.observe(connObserver);
-
-        // Remote cursors via awareness
-        const awarenessHandler = () => {
-          const states = provider.awareness.getStates();
-          const cursors = new Map<number, RemoteCursor>();
-          states.forEach((state: any, clientId: number) => {
-            if (clientId !== ydoc.clientID && state.canvasCursor) {
-              cursors.set(clientId, {
-                x: state.canvasCursor.x,
-                y: state.canvasCursor.y,
-                name: state.user?.name || 'Anonymous',
-                color: state.user?.color || '#6b7280',
-                dragging: state.canvasCursor.dragging,
-              });
-            }
-          });
-          setRemoteCursors(cursors);
-        };
-        provider.awareness.on('change', awarenessHandler);
-
-        syncPositions();
-        syncConnections();
-
-        cleanup = () => {
-          posMap.unobserve(posObserver);
-          connMap.unobserve(connObserver);
-          provider.awareness.off('change', awarenessHandler);
-        };
-      } catch (error) {
-        logger.error('Failed to connect canvas to Yjs:', error);
-      }
-    };
-
-    init();
-    return () => cleanup?.();
-  }, [syncPositions, syncConnections]);
+    const data = loadCanvasData(roomId);
+    setCardPositions(data.positions);
+    setConnections(data.connections);
+    positionsRef.current = data.positions;
+    connectionsRef.current = data.connections;
+  }, [roomId]);
 
   // Auto-layout new cards that don't have positions yet
   useEffect(() => {
-    const posMap = positionsMapRef.current;
-    if (!posMap || flashcards.length === 0) return;
+    if (flashcards.length === 0) return;
+
+    const currentPositions = positionsRef.current;
 
     // Group cards by section for cluster layout
     const sections: Record<string, Flashcard[]> = {};
@@ -173,6 +140,7 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
     });
 
     let needsLayout = false;
+    const newPositions = { ...currentPositions };
     const sectionNames = Object.keys(sections);
     let cumulativeX = 50; // Start with left padding
 
@@ -182,24 +150,28 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
       const sectionWidth = cols * (CARD_WIDTH + 30);
 
       sectionCards.forEach((card, cardIndex) => {
-        if (!posMap.has(card.id)) {
+        if (!newPositions[card.id]) {
           needsLayout = true;
           const row = Math.floor(cardIndex / cols);
           const col = cardIndex % cols;
           const colorIndex = sectionIndex % CARD_COLORS.length;
-          posMap.set(card.id, {
+          newPositions[card.id] = {
             x: cumulativeX + col * (CARD_WIDTH + 30),
             y: row * (CARD_HEIGHT + 30) + 80,
             color: CARD_COLORS[colorIndex],
-          });
+          };
         }
       });
 
       cumulativeX += sectionWidth + 80; // Gap between sections
     });
 
-    if (needsLayout) syncPositions();
-  }, [flashcards, syncPositions]);
+    if (needsLayout) {
+      setCardPositions(newPositions);
+      positionsRef.current = newPositions;
+      saveCanvasData(roomId, { positions: newPositions, connections: connectionsRef.current });
+    }
+  }, [flashcards, roomId]);
 
   // Handle card drag
   const handleCardPointerDown = useCallback((e: React.PointerEvent, cardId: string) => {
@@ -234,44 +206,36 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
     const newX = pos.x - dragOffsetRef.current.x;
     const newY = pos.y - dragOffsetRef.current.y;
 
-    const posMap = positionsMapRef.current;
-    if (posMap) {
-      const existing = posMap.get(draggingCard) || {};
-      posMap.set(draggingCard, { ...existing, x: newX, y: newY });
-    }
-
-    // Broadcast dragging state
-    if (providerRef.current) {
-      providerRef.current.awareness.setLocalStateField('canvasCursor', {
-        x: pos.x, y: pos.y, dragging: draggingCard,
-      });
-    }
+    setCardPositions(prev => {
+      const existing = prev[draggingCard] || {};
+      const updated = { ...prev, [draggingCard]: { ...existing, x: newX, y: newY } };
+      positionsRef.current = updated;
+      return updated;
+    });
   }, [draggingCard, connectingFrom, screenToWorld]);
 
   const handleCardPointerUp = useCallback((e: React.PointerEvent, cardId?: string) => {
     if (connectingFrom && cardId && cardId !== connectingFrom) {
-      // Create connection
-      const connMap = connectionsMapRef.current;
-      if (connMap) {
-        const connId = `${connectingFrom}-${cardId}`;
-        // Toggle: remove if exists
-        if (connMap.has(connId)) {
-          connMap.delete(connId);
-        } else {
-          connMap.set(connId, { from: connectingFrom, to: cardId });
-        }
-      }
+      // Create connection (toggle: remove if exists)
+      const connId = `${connectingFrom}-${cardId}`;
+      setConnections(prev => {
+        const exists = prev.some(c => c.from === connectingFrom && c.to === cardId);
+        const updated = exists
+          ? prev.filter(c => !(c.from === connectingFrom && c.to === cardId))
+          : [...prev, { from: connectingFrom, to: cardId }];
+        connectionsRef.current = updated;
+        saveCanvasData(roomId, { positions: positionsRef.current, connections: updated });
+        return updated;
+      });
     }
     setConnectingFrom(null);
     setConnectMousePos(null);
 
     if (draggingCard) {
       setDraggingCard(null);
-      if (providerRef.current) {
-        providerRef.current.awareness.setLocalStateField('canvasCursor', null);
-      }
+      persistToStorage();
     }
-  }, [draggingCard, connectingFrom]);
+  }, [draggingCard, connectingFrom, roomId, persistToStorage]);
 
   // Background pan
   const handleBackgroundPointerDown = useCallback((e: React.PointerEvent) => {
@@ -291,12 +255,6 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
   }, [connectingFrom]);
 
   const handleBackgroundPointerMove = useCallback((e: React.PointerEvent) => {
-    // Broadcast cursor
-    if (providerRef.current && isActive && !draggingCard) {
-      const pos = screenToWorld(e.clientX, e.clientY);
-      providerRef.current.awareness.setLocalStateField('canvasCursor', { x: pos.x, y: pos.y });
-    }
-
     if (connectingFrom) {
       const pos = screenToWorld(e.clientX, e.clientY);
       setConnectMousePos(pos);
@@ -311,7 +269,7 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
     };
     // Force re-render
     setZoom(z => z); // Trick to trigger re-render for pan
-  }, [connectingFrom, draggingCard, isActive, screenToWorld]);
+  }, [connectingFrom, screenToWorld]);
 
   const handleBackgroundPointerUp = useCallback((e: React.PointerEvent) => {
     if (isPanningRef.current) {
@@ -363,9 +321,6 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
 
   // Auto-arrange cards in a grid, grouped by section with no overlaps
   const handleAutoArrange = useCallback(() => {
-    const posMap = positionsMapRef.current;
-    if (!posMap) return;
-
     const sections: Record<string, Flashcard[]> = {};
     flashcards.forEach(card => {
       const section = card.section || 'Unsorted';
@@ -375,6 +330,7 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
 
     const sectionNames = Object.keys(sections);
     let cumulativeX = 50;
+    const newPositions = { ...positionsRef.current };
 
     sectionNames.forEach((sectionName, sectionIndex) => {
       const sectionCards = sections[sectionName];
@@ -385,22 +341,26 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
       sectionCards.forEach((card, cardIndex) => {
         const row = Math.floor(cardIndex / cols);
         const col = cardIndex % cols;
-        const existing = posMap.get(card.id) || {};
-        posMap.set(card.id, {
+        const existing = newPositions[card.id] || {};
+        newPositions[card.id] = {
           ...existing,
           x: cumulativeX + col * (CARD_WIDTH + 30),
           y: row * (CARD_HEIGHT + 30) + 80,
           color: existing.color || CARD_COLORS[colorIndex],
-        });
+        };
       });
 
       cumulativeX += sectionWidth + 80;
     });
 
+    setCardPositions(newPositions);
+    positionsRef.current = newPositions;
+    saveCanvasData(roomId, { positions: newPositions, connections: connectionsRef.current });
+
     // Reset view
     panOffsetRef.current = { x: 0, y: 0 };
     setZoom(1);
-  }, [flashcards]);
+  }, [flashcards, roomId]);
 
   // Center view on all cards
   const handleCenterView = useCallback(() => {
@@ -450,7 +410,7 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
 
   // Render connection lines
   const renderConnections = () => {
-    return connections.map((conn, i) => {
+    return connections.map((conn) => {
       const from = getCardCenter(conn.from);
       const to = getCardCenter(conn.to);
       if (!from || !to) return null;
@@ -611,24 +571,6 @@ export function CollaborativeCanvas({ isActive, flashcards }: CollaborativeCanva
           );
         })}
       </div>
-
-      {/* Remote cursors */}
-      {Array.from(remoteCursors.entries()).map(([clientId, cursor]) => {
-        const screenX = cursor.x * zoom + panOffsetRef.current.x;
-        const screenY = cursor.y * zoom + panOffsetRef.current.y;
-        return (
-          <div
-            key={clientId}
-            className="canvas-remote-cursor"
-            style={{ left: screenX, top: screenY }}
-          >
-            <div className="canvas-remote-cursor-dot" style={{ backgroundColor: cursor.color }} />
-            <span className="canvas-remote-cursor-label" style={{ backgroundColor: cursor.color }}>
-              {cursor.name}{cursor.dragging ? ' (moving)' : ''}
-            </span>
-          </div>
-        );
-      })}
 
       {/* Empty state */}
       {flashcards.length === 0 && (

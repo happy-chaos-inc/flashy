@@ -967,8 +967,6 @@
 /* Floating Chat Widget */
 .chat-widget {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
   width: 400px;
   height: 560px;
   z-index: 1000;
@@ -1001,26 +999,36 @@
 
 .chat-fab {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
   width: 56px;
   height: 56px;
   border-radius: 50%;
   background: #B399D4;
   color: white;
   border: none;
-  cursor: pointer;
+  cursor: grab;
   box-shadow: 0 4px 16px rgba(179, 153, 212, 0.4);
   z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: transform 0.15s, box-shadow 0.15s;
+  touch-action: none;
+  user-select: none;
 }
 
 .chat-fab:hover {
   transform: scale(1.08);
   box-shadow: 0 6px 20px rgba(179, 153, 212, 0.5);
+}
+
+.chat-fab.dragging {
+  cursor: grabbing;
+  transform: scale(1.12);
+  box-shadow: 0 8px 24px rgba(179, 153, 212, 0.6);
+}
+
+.chat-fab.dragging:hover {
+  transform: scale(1.12);
 }
 
 /* Left resize handle for flashcard sidebar */
