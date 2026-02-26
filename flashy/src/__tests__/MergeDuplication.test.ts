@@ -435,6 +435,294 @@ describe('CRITICAL: Merge-on-Save Duplication Bug', () => {
   });
 });
 
+describe('CRITICAL: Empty Document Save Guard', () => {
+  let doc: Y.Doc;
+  let persistence: DocumentPersistence;
+
+  beforeEach(() => {
+    doc = new Y.Doc();
+    persistence = new DocumentPersistence(doc);
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    persistence.destroy();
+    doc.destroy();
+  });
+
+  it('CRITICAL: saveNow should REFUSE to save when document is completely empty', async () => {
+    // Empty doc — no prosemirror content, no text content
+    expect(doc.getXmlFragment('prosemirror').length).toBe(0);
+    expect(doc.getText('content').toString()).toBe('');
+
+    const events: string[] = [];
+    persistence.on('save-status', ({ status }: { status: string }) => {
+      events.push(status);
+    });
+
+    await persistence.saveNow();
+
+    // Should NOT have called the RPC at all — blocked by empty guard
+    expect((supabase.rpc as jest.Mock).mock.calls.length).toBe(0);
+
+    // Should emit 'saved' (silently succeeds without actual save)
+    // but should NOT emit 'saving' + actual RPC
+    expect(events).not.toContain('error');
+  });
+
+  it('CRITICAL: saveNow should ALLOW saving when prosemirror fragment has content', async () => {
+    const fragment = doc.getXmlFragment('prosemirror');
+    markdownToProsemirror('# Notes\n## Card 1\nAnswer', fragment);
+
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: { message: 'ok' },
+      error: null,
+    });
+
+    await persistence.saveNow();
+
+    // Should have called upsert_document_rpc
+    const upsertCalls = (supabase.rpc as jest.Mock).mock.calls
+      .filter((call: any[]) => call[0] === 'upsert_document_rpc');
+    expect(upsertCalls.length).toBe(1);
+  });
+
+  it('CRITICAL: saveNow should ALLOW saving when only text content exists', async () => {
+    doc.getText('content').insert(0, 'Some text content');
+
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: { message: 'ok' },
+      error: null,
+    });
+
+    await persistence.saveNow();
+
+    const upsertCalls = (supabase.rpc as jest.Mock).mock.calls
+      .filter((call: any[]) => call[0] === 'upsert_document_rpc');
+    expect(upsertCalls.length).toBe(1);
+  });
+});
+
+describe('CRITICAL: Auto-save Only Fires on Local Edits', () => {
+  it('should NOT trigger scheduleSave when update origin is the persistence instance', () => {
+    const doc = new Y.Doc();
+    const persistence = new DocumentPersistence(doc);
+
+    // Spy on scheduleSave
+    const scheduleSaveSpy = jest.spyOn(persistence, 'scheduleSave');
+
+    // Enable auto-save with no remote origins
+    persistence.enableAutoSave();
+
+    // Simulate a DB load (origin = persistence instance itself)
+    const otherDoc = new Y.Doc();
+    otherDoc.getText('content').insert(0, 'DB content');
+    const update = Y.encodeStateAsUpdate(otherDoc);
+    Y.applyUpdate(doc, update, persistence); // origin = persistence
+
+    // scheduleSave should NOT have been called
+    expect(scheduleSaveSpy).not.toHaveBeenCalled();
+
+    scheduleSaveSpy.mockRestore();
+    persistence.destroy();
+    doc.destroy();
+    otherDoc.destroy();
+  });
+
+  it('should NOT trigger scheduleSave when update origin is the provider', () => {
+    const doc = new Y.Doc();
+    const persistence = new DocumentPersistence(doc);
+    const mockProvider = { name: 'mock-provider' }; // Simulate provider object
+
+    const scheduleSaveSpy = jest.spyOn(persistence, 'scheduleSave');
+
+    // Enable auto-save with provider as remote origin
+    persistence.enableAutoSave([mockProvider]);
+
+    // Simulate a remote update (origin = provider)
+    const remoteDoc = new Y.Doc();
+    remoteDoc.getText('content').insert(0, 'Remote edit');
+    const update = Y.encodeStateAsUpdate(remoteDoc);
+    Y.applyUpdate(doc, update, mockProvider); // origin = provider
+
+    // scheduleSave should NOT have been called
+    expect(scheduleSaveSpy).not.toHaveBeenCalled();
+
+    scheduleSaveSpy.mockRestore();
+    persistence.destroy();
+    doc.destroy();
+    remoteDoc.destroy();
+  });
+
+  it('should trigger scheduleSave for local edits (null origin)', () => {
+    const doc = new Y.Doc();
+    const persistence = new DocumentPersistence(doc);
+    const mockProvider = { name: 'mock-provider' };
+
+    const scheduleSaveSpy = jest.spyOn(persistence, 'scheduleSave');
+
+    // Enable auto-save with provider as remote origin
+    persistence.enableAutoSave([mockProvider]);
+
+    // Local edit — origin is null/undefined (default for direct Y.Doc mutations)
+    doc.getText('content').insert(0, 'Local typing');
+
+    // scheduleSave SHOULD have been called
+    expect(scheduleSaveSpy).toHaveBeenCalled();
+
+    scheduleSaveSpy.mockRestore();
+    persistence.destroy();
+    doc.destroy();
+  });
+});
+
+describe('CRITICAL: Version Conflict Handling', () => {
+  let doc: Y.Doc;
+  let persistence: DocumentPersistence;
+
+  beforeEach(() => {
+    doc = new Y.Doc();
+    persistence = new DocumentPersistence(doc);
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    persistence.destroy();
+    doc.destroy();
+  });
+
+  it('should handle RPC returning success: false by rescheduling', async () => {
+    doc.getText('content').insert(0, 'test content');
+
+    // RPC returns success: false with a server_version
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: { success: false, message: 'Version conflict', server_version: 42 },
+      error: null,
+    });
+
+    const events: string[] = [];
+    persistence.on('save-status', ({ status }: { status: string }) => {
+      events.push(status);
+    });
+
+    await persistence.saveNow();
+
+    // Should have emitted 'saving' but NOT 'saved' or 'error'
+    // (it reschedules instead)
+    expect(events).toContain('saving');
+    expect(events).not.toContain('error');
+  });
+
+  it('should track server_version from successful saves', async () => {
+    doc.getText('content').insert(0, 'test content');
+
+    // First save returns server_version
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: { message: 'ok', server_version: 5 },
+      error: null,
+    });
+
+    await persistence.saveNow();
+
+    // Second save should pass the server_version as p_min_version
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: { message: 'ok', server_version: 6 },
+      error: null,
+    });
+
+    // Reset circuit breaker by manipulating internal state
+    // (In real code, 5+ seconds would pass between saves)
+    (persistence as any).lastSaveAttempt = 0;
+
+    await persistence.saveNow();
+
+    // Check the second call's p_min_version
+    const calls = (supabase.rpc as jest.Mock).mock.calls
+      .filter((call: any[]) => call[0] === 'upsert_document_rpc');
+    expect(calls.length).toBe(2);
+    expect(calls[1][1].p_min_version).toBe(5); // From first save's server_version
+  });
+
+  it('should track server_version from loadFromDatabase', async () => {
+    // Server returns version in load response
+    const serverDoc = new Y.Doc();
+    serverDoc.getText('content').insert(0, 'server data');
+    const stateUpdate = Y.encodeStateAsUpdate(serverDoc);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < stateUpdate.length; i += chunkSize) {
+      const chunk = stateUpdate.subarray(i, i + chunkSize);
+      binary += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    const base64State = btoa(binary);
+
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: [{
+        id: 'room-default',
+        yjs_state: base64State,
+        version: 10,
+        updated_at: new Date().toISOString(),
+      }],
+      error: null,
+    });
+
+    await persistence.loadFromDatabase();
+
+    // Now save — should use version 10 as p_min_version
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: { message: 'ok', server_version: 11 },
+      error: null,
+    });
+
+    await persistence.saveNow();
+
+    const saveCalls = (supabase.rpc as jest.Mock).mock.calls
+      .filter((call: any[]) => call[0] === 'upsert_document_rpc');
+    expect(saveCalls.length).toBe(1);
+    expect(saveCalls[0][1].p_min_version).toBe(10);
+
+    serverDoc.destroy();
+  });
+});
+
+describe('CRITICAL: Circuit Breaker', () => {
+  let doc: Y.Doc;
+  let persistence: DocumentPersistence;
+
+  beforeEach(() => {
+    doc = new Y.Doc();
+    persistence = new DocumentPersistence(doc);
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    persistence.destroy();
+    doc.destroy();
+  });
+
+  it('should prevent rapid-fire saves (circuit breaker)', async () => {
+    doc.getText('content').insert(0, 'test content');
+
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: { message: 'ok' },
+      error: null,
+    });
+
+    // First save goes through
+    await persistence.saveNow();
+
+    // Immediately try another — should be blocked by circuit breaker
+    await persistence.saveNow();
+    await persistence.saveNow();
+    await persistence.saveNow();
+
+    // Only 1 actual RPC call should have been made
+    const upsertCalls = (supabase.rpc as jest.Mock).mock.calls
+      .filter((call: any[]) => call[0] === 'upsert_document_rpc');
+    expect(upsertCalls.length).toBe(1);
+  });
+});
+
 describe('Initial Load Safety', () => {
   it('should apply DB state to an empty doc cleanly', async () => {
     // Server has content

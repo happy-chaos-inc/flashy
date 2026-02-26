@@ -8,12 +8,15 @@ import * as Y from 'yjs';
 import { supabase } from '../config/supabase';
 import { logger } from './logger';
 
-const SAVE_DEBOUNCE_MS = 800; // Save quickly for faster cross-peer sync
+const SAVE_DEBOUNCE_MS = 2000; // 2 seconds — balanced between responsiveness and not hammering DB
 
 // Retry configuration
 const MAX_RETRIES = 5;
 const INITIAL_RETRY_DELAY = 2000; // 2 seconds
 const MAX_RETRY_DELAY = 30000; // 30 seconds
+
+// Circuit breaker: minimum time between save ATTEMPTS (not just debounce)
+const MIN_SAVE_INTERVAL_MS = 5000; // At most 1 save every 5 seconds
 
 // Safe base64 encoding for large Uint8Arrays (avoids stack overflow)
 function uint8ArrayToBase64(bytes: Uint8Array): string {
@@ -49,6 +52,7 @@ export class DocumentPersistence {
   private saveCount: number = 0; // Track number of saves for snapshot sampling
   private lastKnownVersion: number = 0; // Track server version to pass conflict check
   private pendingSave: boolean = false; // True if a save was requested while another was in progress
+  private lastSaveAttempt: number = 0; // Timestamp of last save attempt (circuit breaker)
   private pollTimer: NodeJS.Timeout | null = null;
 
   // Event emitter
@@ -165,10 +169,19 @@ export class DocumentPersistence {
    */
   async saveNow(): Promise<void> {
     if (this.isSaving) {
-      logger.log('⏸️  Save already in progress, queuing follow-up');
       this.pendingSave = true;
       return;
     }
+
+    // Circuit breaker: prevent save floods. At most 1 save every MIN_SAVE_INTERVAL_MS.
+    const now = Date.now();
+    const timeSinceLastSave = now - this.lastSaveAttempt;
+    if (timeSinceLastSave < MIN_SAVE_INTERVAL_MS) {
+      // Too soon — schedule for later instead of firing now
+      this.scheduleSave();
+      return;
+    }
+    this.lastSaveAttempt = now;
 
     this.isSaving = true;
     this.emit('save-status', { status: 'saving' as SaveStatus });
@@ -347,24 +360,40 @@ export class DocumentPersistence {
       if (error) throw error;
 
       if (data && data.yjs_state) {
-        // Decode and apply the historical state
         const stateVector = safeBase64Decode(data.yjs_state);
         if (!stateVector) {
           logger.error('❌ Corrupted version snapshot');
           return false;
         }
 
-        // Clear current state and apply historical state
-        this.doc.transact(() => {
-          const ytext = this.doc.getText('content');
-          ytext.delete(0, ytext.length);
-          Y.applyUpdate(this.doc, stateVector);
+        // Version restore in Yjs CANNOT be done by delete+apply on the same doc.
+        // CRDT deletes are tombstoned — they're permanent. Applying old state
+        // won't undo the delete. Instead, push the historical state directly
+        // to the DB, then force all clients to reload.
+        const base64State = data.yjs_state;
+        const tempDoc = new Y.Doc();
+        Y.applyUpdate(tempDoc, stateVector);
+        const textContent = tempDoc.getText('content').toString();
+        tempDoc.destroy();
+
+        const { error: saveError } = await supabase.rpc('upsert_document_rpc', {
+          p_id: this.documentId,
+          p_title: 'Main Document',
+          p_owner_id: sessionStorage.getItem('flashy_user_id') || null,
+          p_yjs_state_base64: base64State,
+          p_content_text: textContent,
+          p_last_edited_by: sessionStorage.getItem('flashy_username') || 'anonymous',
+          p_min_version: this.lastKnownVersion,
+          p_snapshot_every_n: 1, // Force snapshot on restore
+          p_snapshot_every_seconds: 0,
         });
 
-        logger.log('✅ Restored to version:', targetVersion);
+        if (saveError) throw saveError;
 
-        // Save the restored version as current
-        await this.saveNow();
+        logger.log('✅ Restored version pushed to DB — reloading...');
+
+        // Force a page reload so all clients get the restored version
+        window.location.reload();
 
         return true;
       }

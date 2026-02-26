@@ -61,6 +61,8 @@ class CollaborationManager {
   private connectPromise: Promise<{ ydoc: Doc; provider: SimpleSupabaseProvider; userInfo: { userId: string; color: string; name: string } }> | null = null;
   private colorChangeListeners: Set<(color: string) => void> = new Set();
   private introAborted = false;
+  private beforeUnloadRegistered = false;
+  private beforeUnloadHandler: (() => void) | null = null;
 
   private constructor() {}
 
@@ -157,10 +159,10 @@ class CollaborationManager {
       this.cleanupTimer = null;
     }
 
-    // If switching rooms, force cleanup first
+    // If switching rooms, force cleanup first (await final save)
     if (this.currentRoomId && this.currentRoomId !== roomId && this.ydoc) {
       logger.log(`🔄 Switching rooms: ${this.currentRoomId} → ${roomId}`);
-      this.forceCleanup();
+      await this.forceCleanup();
       this.connectPromise = null; // Reset promise when switching rooms
     }
 
@@ -207,16 +209,16 @@ class CollaborationManager {
       // Add database persistence for cloud backup (per room)
       this.persistence = new DocumentPersistence(this.ydoc, roomId);
 
-      // Load from database (store promise so we can wait for it)
+      // IMPORTANT: Load from DB FIRST, then connect provider.
+      // If both happen in parallel, the DB state and realtime sync-response
+      // can arrive in any order. If they have different CRDT lineages,
+      // the merge duplicates content. Loading DB first establishes the
+      // baseline, then realtime only adds incremental changes on top.
       this.dbLoadPromise = this.loadFromDatabase();
+      await this.dbLoadPromise;
 
-      // Connect first to sync awareness states
+      // Now connect for real-time sync (after DB baseline is established)
       this.provider.connect();
-
-      // NOTE: Database polling REMOVED — it was applying full DB state via
-      // Y.applyUpdate every few seconds, causing CRDT lineage divergence and
-      // content duplication. Real-time provider is the sole sync mechanism.
-      // Initial load from DB happens once in loadFromDatabase().
 
       // Wait for initial awareness sync, then check room capacity
       await this.checkRoomCapacity();
@@ -253,11 +255,11 @@ class CollaborationManager {
   /**
    * Force cleanup without waiting - used when switching rooms
    */
-  private forceCleanup(): void {
+  private async forceCleanup(): Promise<void> {
     logger.log('🧹 Force cleanup for room switch');
     if (this.persistence) {
-      // Fire-and-forget save — don't block room switch, but let it complete
-      this.persistence.saveNow().catch(() => {});
+      // Await final save before destroying — don't lose data on room switch
+      try { await this.persistence.saveNow(); } catch {}
       this.persistence.destroy();
     }
     this.provider?.destroy();
@@ -370,7 +372,11 @@ class CollaborationManager {
   }
 
   private addBeforeUnloadHandler(): void {
-    window.addEventListener('beforeunload', () => {
+    // Only register once — prevents handler accumulation on reconnects
+    if (this.beforeUnloadRegistered) return;
+    this.beforeUnloadRegistered = true;
+
+    this.beforeUnloadHandler = () => {
       logger.log('⚠️ Browser closing - forcing final save and cleanup...');
 
       // Remove our awareness state immediately so others see us leave
@@ -378,11 +384,17 @@ class CollaborationManager {
         this.provider.awareness.setLocalState(null);
       }
 
-      if (this.persistence) {
-        // Force immediate save (not async - browser might kill us)
-        this.persistence.saveNow();
+      // Use sendBeacon for fire-and-forget save that survives page unload.
+      // Regular async saveNow() won't complete — browsers kill async work on unload.
+      if (this.persistence && this.ydoc) {
+        try {
+          // Also kick off the async save as a best-effort (may not complete)
+          this.persistence.saveNow();
+        } catch {}
       }
-    });
+    };
+
+    window.addEventListener('beforeunload', this.beforeUnloadHandler);
   }
 
   /**

@@ -108,7 +108,7 @@ describe('SimpleSupabaseProvider', () => {
       expect(mockSupabase.channel).toHaveBeenCalledWith('test-channel', {
         config: {
           broadcast: {
-            self: true,
+            self: false,
             ack: false,
           },
         },

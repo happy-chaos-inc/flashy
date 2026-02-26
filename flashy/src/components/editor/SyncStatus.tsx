@@ -43,6 +43,12 @@ export function SyncStatus({ roomId }: SyncStatusProps) {
   };
 
   const handleResetFull = async () => {
+    // Require explicit confirmation — this deletes ALL data for ALL users
+    const confirmed = window.confirm(
+      `This will permanently delete ALL content in room "${roomId}" for ALL users. This cannot be undone.\n\nAre you sure?`
+    );
+    if (!confirmed) return;
+
     setResetting(true);
     try {
       await collaborationManager.resetRoom(roomId, 'full');

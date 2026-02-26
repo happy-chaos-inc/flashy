@@ -466,7 +466,13 @@ export function EditorPage({ roomId }: EditorPageProps) {
       }
     };
 
-    init();
+    let cleanup: (() => void) | undefined;
+    init().then(fn => { cleanup = fn; });
+
+    return () => {
+      if (cleanup) cleanup();
+      collaborationManager.disconnect();
+    };
   }, [editorMode, roomId]);
 
   const getActiveScrollElement = useCallback((): Element | null => {

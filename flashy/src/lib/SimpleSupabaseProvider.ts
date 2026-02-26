@@ -1,6 +1,13 @@
 /**
  * Simple Supabase Provider for Yjs
- * With auto-reconnection, offline queue, and periodic resync
+ * With auto-reconnection, offline queue, and dual resync strategy:
+ * 1. Visibility-based: immediate resync on tab refocus (catches "user was away")
+ * 2. Periodic safety net: 30s state-vector exchange (catches silently dropped broadcasts)
+ *
+ * Supabase Realtime broadcast is fire-and-forget (ack: false). For 4 concurrent
+ * users actively editing, we need both strategies to match Google Docs / Notion
+ * sync quality. The periodic resync is lightweight (~50-100 bytes per state vector)
+ * and only triggers a full sync-response when there's actually a diff.
  */
 import * as Y from 'yjs';
 import * as awarenessProtocol from 'y-protocols/awareness';
@@ -12,8 +19,10 @@ const INITIAL_RECONNECT_DELAY = 1000; // 1 second
 const MAX_RECONNECT_DELAY = 30000; // 30 seconds
 const MAX_RECONNECT_ATTEMPTS = 10;
 
-// Periodic resync — catches missed broadcast messages
-const RESYNC_INTERVAL = 10_000; // 10 seconds
+// Safety-net periodic resync — catches silently dropped broadcasts.
+// 30s is 3× less frequent than the old 10s timer but still catches gaps
+// within a reasonable window. For 4 users: 8 state-vector msgs/min (tiny).
+const PERIODIC_RESYNC_INTERVAL = 30_000; // 30 seconds
 
 export class SimpleSupabaseProvider {
   doc: Y.Doc;
@@ -40,7 +49,8 @@ export class SimpleSupabaseProvider {
   private batchTimer: NodeJS.Timeout | null = null;
   private readonly BATCH_INTERVAL = 50; // ms — batch updates within 50ms
 
-  // Periodic resync
+  // Dual resync: visibility-based + periodic safety net
+  private visibilityHandler: (() => void) | null = null;
   private resyncTimer: NodeJS.Timeout | null = null;
 
   constructor(doc: Y.Doc, supabase: SupabaseClient<any>, channelName: string) {
@@ -103,7 +113,7 @@ export class SimpleSupabaseProvider {
     this.channel = this.supabase.channel(this.channelName, {
       config: {
         broadcast: {
-          self: true,
+          self: false, // Don't receive our own broadcasts — wastes CPU and triggers redundant saves
           ack: false,
         },
       },
@@ -153,7 +163,7 @@ export class SimpleSupabaseProvider {
       }
     });
 
-    // Listen for state vector broadcasts (periodic resync)
+    // Listen for state vector broadcasts (resync on reconnect/focus)
     this.channel.on('broadcast', { event: 'state-vector' }, ({ payload }: any) => {
       try {
         if (payload.clientId === this.doc.clientID) return;
@@ -220,8 +230,9 @@ export class SimpleSupabaseProvider {
           // Flush any pending updates
           this.flushPendingUpdates();
 
-          // Start periodic resync
-          this.startResync();
+          // Start dual resync: visibility + periodic safety net
+          this.startVisibilityResync();
+          this.startPeriodicResync();
 
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           // Log with diagnostic info on first occurrence
@@ -232,7 +243,8 @@ export class SimpleSupabaseProvider {
           }
           this.connected = false;
           this.emit('status', { status: 'disconnected' });
-          this.stopResync();
+          this.stopVisibilityResync();
+          this.stopPeriodicResync();
 
           // Auto-reconnect
           this.scheduleReconnect();
@@ -240,7 +252,8 @@ export class SimpleSupabaseProvider {
         } else if (status === 'CLOSED') {
           this.connected = false;
           this.emit('status', { status: 'disconnected' });
-          this.stopResync();
+          this.stopVisibilityResync();
+          this.stopPeriodicResync();
 
           // Auto-reconnect if not intentionally destroyed
           if (!this.isDestroyed) {
@@ -251,35 +264,74 @@ export class SimpleSupabaseProvider {
         logger.error('SimpleProvider: Error in subscription handler', error);
         this.connected = false;
         this.emit('status', { status: 'disconnected' });
-        this.stopResync();
+        this.stopVisibilityResync();
+        this.stopPeriodicResync();
         this.scheduleReconnect();
       }
     });
   }
 
-  private startResync(): void {
-    this.stopResync();
-    this.resyncTimer = setInterval(() => {
-      if (!this.connected || this.isDestroyed) return;
+  /**
+   * State-vector resync on visibility change (tab refocus).
+   * Replaces the 10s polling timer. When a user switches back to this tab,
+   * we broadcast our state vector so peers can send anything we missed.
+   * This is the Notion-style approach: resync on reconnect, not on a timer.
+   */
+  private sendStateVector(): void {
+    if (!this.connected || this.isDestroyed || !this.channel) return;
 
-      try {
-        // Broadcast our state vector so peers can detect if we're missing anything
-        const sv = Y.encodeStateVector(this.doc);
-        this.channel.send({
-          type: 'broadcast',
-          event: 'state-vector',
-          payload: {
-            sv: Array.from(sv),
-            clientId: this.doc.clientID,
-          }
-        });
-      } catch {
-        // Non-critical
-      }
-    }, RESYNC_INTERVAL);
+    try {
+      const sv = Y.encodeStateVector(this.doc);
+      this.channel.send({
+        type: 'broadcast',
+        event: 'state-vector',
+        payload: {
+          sv: Array.from(sv),
+          clientId: this.doc.clientID,
+        }
+      });
+      logger.log('SimpleProvider: State vector sent (visibility resync)');
+    } catch {
+      // Non-critical
+    }
   }
 
-  private stopResync(): void {
+  private startVisibilityResync(): void {
+    this.stopVisibilityResync();
+
+    this.visibilityHandler = () => {
+      if (document.visibilityState === 'visible' && this.connected && !this.isDestroyed) {
+        logger.log('SimpleProvider: Tab became visible — resyncing');
+        this.sendStateVector();
+      }
+    };
+
+    document.addEventListener('visibilitychange', this.visibilityHandler);
+  }
+
+  private stopVisibilityResync(): void {
+    if (this.visibilityHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+      this.visibilityHandler = null;
+    }
+  }
+
+  /**
+   * Periodic safety net: broadcast state vector every 30s.
+   * Catches silently dropped broadcasts during active editing sessions
+   * where all users stay on the same tab. Each state vector is ~50-100 bytes;
+   * peers only respond if there's actually a diff. For 4 users this is
+   * 8 tiny messages/minute — negligible load on Supabase.
+   */
+  private startPeriodicResync(): void {
+    this.stopPeriodicResync();
+    this.resyncTimer = setInterval(() => {
+      if (!this.connected || this.isDestroyed) return;
+      this.sendStateVector();
+    }, PERIODIC_RESYNC_INTERVAL);
+  }
+
+  private stopPeriodicResync(): void {
     if (this.resyncTimer) {
       clearInterval(this.resyncTimer);
       this.resyncTimer = null;
@@ -348,7 +400,7 @@ export class SimpleSupabaseProvider {
         if (this.pendingUpdates.length < this.maxPendingUpdates) {
           this.pendingUpdates.push(update);
         } else {
-          logger.warn('SimpleProvider: Offline queue full, update dropped. Edits are still saved locally via IndexedDB.');
+          logger.warn('SimpleProvider: Offline queue full, update dropped. Edits exist in memory — they will sync when connection recovers via state-vector exchange.');
         }
         return;
       }
@@ -402,7 +454,8 @@ export class SimpleSupabaseProvider {
   disconnect(): void {
     logger.log('SimpleProvider: Disconnecting...');
 
-    this.stopResync();
+    this.stopVisibilityResync();
+    this.stopPeriodicResync();
 
     // Cancel pending reconnect
     if (this.reconnectTimer) {

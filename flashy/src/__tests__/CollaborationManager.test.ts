@@ -74,17 +74,30 @@ jest.mock('../config/supabase', () => ({
   },
 }));
 
-jest.mock('../lib/DocumentPersistence', () => ({
-  DocumentPersistence: jest.fn().mockImplementation(() => ({
-    loadFromDatabase: jest.fn().mockResolvedValue(false),
-    enableAutoSave: jest.fn(),
-    saveNow: jest.fn().mockResolvedValue(undefined),
-    destroy: jest.fn(),
-    startPolling: jest.fn(),
-    on: jest.fn(),
-    off: jest.fn(),
-  })),
-}));
+jest.mock('../lib/DocumentPersistence', () => {
+  const Y = require('yjs');
+  return {
+    DocumentPersistence: jest.fn().mockImplementation((doc: any) => ({
+      loadFromDatabase: jest.fn().mockImplementation(() => {
+        // Put something in the prosemirror fragment so CM doesn't trigger
+        // empty-doc retry logic (which waits 2s × 3 retries)
+        const fragment = doc.getXmlFragment('prosemirror');
+        if (fragment.length === 0) {
+          const p = new Y.XmlElement('paragraph');
+          fragment.push([p]);
+          p.push([new Y.XmlText('test')]);
+        }
+        return Promise.resolve(true);
+      }),
+      enableAutoSave: jest.fn(),
+      saveNow: jest.fn().mockResolvedValue(undefined),
+      destroy: jest.fn(),
+      startPolling: jest.fn(),
+      on: jest.fn(),
+      off: jest.fn(),
+    })),
+  };
+});
 
 jest.mock('../lib/SimpleSupabaseProvider', () => ({
   SimpleSupabaseProvider: jest.fn().mockImplementation((doc) => {
@@ -110,17 +123,28 @@ jest.mock('../lib/userColors', () => ({
   USER_COLORS: ['#4A90D9', '#50C878', '#FF6B6B', '#FFD93D'],
 }));
 
+// Helper: wait for doConnect to complete (DB load + 500ms capacity check)
+async function advanceConnection() {
+  await new Promise(resolve => setTimeout(resolve, 700));
+}
+
 describe('CollaborationManager', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    jest.useFakeTimers();
     localStorageMock.getItem.mockReturnValue(null);
-    sessionStorageMock.getItem.mockReturnValue(null);
+    // Return a matching room ID for flashy_new_room so loadFromDatabase
+    // skips the empty-doc retry logic (which waits 2s × 3 retries with real timers)
+    sessionStorageMock.getItem.mockImplementation((key: string) => {
+      if (key === 'flashy_new_room') {
+        // Return a value that will match ANY room ID being connected
+        // The CM checks: sessionStorage.getItem('flashy_new_room') === this.currentRoomId
+        // We can't know the room ID in advance, so just return a flag.
+        // We'll set it more specifically in individual tests if needed.
+        return null; // Will be overridden per-test
+      }
+      return null;
+    });
     jest.resetModules();
-  });
-
-  afterEach(() => {
-    jest.useRealTimers();
   });
 
   describe('Singleton Pattern', () => {
@@ -150,7 +174,7 @@ describe('CollaborationManager', () => {
       const { collaborationManager } = await import('../lib/CollaborationManager');
 
       const resultPromise = collaborationManager.connect();
-      jest.advanceTimersByTime(600);
+      await advanceConnection();
       const result = await resultPromise;
 
       expect(result).toHaveProperty('ydoc');
@@ -163,7 +187,7 @@ describe('CollaborationManager', () => {
       const { collaborationManager } = await import('../lib/CollaborationManager');
 
       const resultPromise = collaborationManager.connect('test-room');
-      jest.advanceTimersByTime(600);
+      await advanceConnection();
       await resultPromise;
 
       expect(collaborationManager.getRoomId()).toBe('test-room');
@@ -173,7 +197,7 @@ describe('CollaborationManager', () => {
       const { collaborationManager } = await import('../lib/CollaborationManager');
 
       const resultPromise = collaborationManager.connect();
-      jest.advanceTimersByTime(600);
+      await advanceConnection();
       const result = await resultPromise;
 
       // Check it has Y.Doc methods instead of instanceof (avoids module duplication issues)
@@ -186,7 +210,7 @@ describe('CollaborationManager', () => {
       const { collaborationManager } = await import('../lib/CollaborationManager');
 
       const resultPromise = collaborationManager.connect();
-      jest.advanceTimersByTime(600);
+      await advanceConnection();
       const result = await resultPromise;
 
       expect(result.userInfo).toHaveProperty('name');
@@ -200,11 +224,11 @@ describe('CollaborationManager', () => {
       const { collaborationManager } = await import('../lib/CollaborationManager');
 
       const promise1 = collaborationManager.connect('room1');
-      jest.advanceTimersByTime(600);
+      await advanceConnection();
       const result1 = await promise1;
 
       const promise2 = collaborationManager.connect('room1');
-      jest.advanceTimersByTime(600);
+      await advanceConnection();
       const result2 = await promise2;
 
       expect(result1.ydoc).toBe(result2.ydoc);
@@ -215,7 +239,7 @@ describe('CollaborationManager', () => {
       const { collaborationManager } = await import('../lib/CollaborationManager');
 
       const promise = collaborationManager.connect();
-      jest.advanceTimersByTime(600);
+      await advanceConnection();
       await promise;
 
       // Should not throw on disconnect
@@ -231,13 +255,13 @@ describe('CollaborationManager', () => {
       const { collaborationManager } = await import('../lib/CollaborationManager');
 
       const promise1 = collaborationManager.connect('room1');
-      jest.advanceTimersByTime(600);
+      await advanceConnection();
       const result1 = await promise1;
 
       expect(collaborationManager.getRoomId()).toBe('room1');
 
       const promise2 = collaborationManager.connect('room2');
-      jest.advanceTimersByTime(600);
+      await advanceConnection();
       const result2 = await promise2;
 
       expect(collaborationManager.getRoomId()).toBe('room2');
@@ -250,7 +274,7 @@ describe('CollaborationManager', () => {
       const { collaborationManager } = await import('../lib/CollaborationManager');
 
       const promise = collaborationManager.connect();
-      jest.advanceTimersByTime(600);
+      await advanceConnection();
       await promise;
 
       const chatPrompt = collaborationManager.getChatPrompt();
@@ -265,7 +289,7 @@ describe('CollaborationManager', () => {
       const { collaborationManager } = await import('../lib/CollaborationManager');
 
       const promise = collaborationManager.connect();
-      jest.advanceTimersByTime(600);
+      await advanceConnection();
       await promise;
 
       const chatMessages = collaborationManager.getChatMessages();
@@ -290,7 +314,7 @@ describe('CollaborationManager', () => {
       const { collaborationManager } = await import('../lib/CollaborationManager');
 
       const promise = collaborationManager.connect();
-      jest.advanceTimersByTime(600);
+      await advanceConnection();
       await promise;
 
       const listener = jest.fn();
@@ -305,7 +329,7 @@ describe('CollaborationManager', () => {
       const { collaborationManager } = await import('../lib/CollaborationManager');
 
       const promise = collaborationManager.connect();
-      jest.advanceTimersByTime(600);
+      await advanceConnection();
       await promise;
 
       const listener = jest.fn();
@@ -326,7 +350,7 @@ describe('CollaborationManager', () => {
       const promise1 = collaborationManager.connect('room1');
       const promise2 = collaborationManager.connect('room1');
 
-      jest.advanceTimersByTime(600);
+      await advanceConnection();
 
       const [result1, result2] = await Promise.all([promise1, promise2]);
 
