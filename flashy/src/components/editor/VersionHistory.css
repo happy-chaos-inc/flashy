@@ -87,6 +87,33 @@
   font-size: 14px;
 }
 
+.version-history-error {
+  padding: 24px 16px;
+  text-align: center;
+  color: #991b1b;
+  font-size: 14px;
+  background: #fef2f2;
+}
+
+.version-history-error p {
+  margin: 0 0 12px 0;
+}
+
+.version-history-retry {
+  padding: 6px 16px;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.version-history-retry:hover {
+  background: #b91c1c;
+}
+
 .version-history-item {
   display: flex;
   justify-content: space-between;

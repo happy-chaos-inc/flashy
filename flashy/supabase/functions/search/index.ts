@@ -4,10 +4,29 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+const ALLOWED_ORIGINS = [
+  'https://happy-chaos-inc.github.io',
+  'http://localhost:3000',
+]
+
+function getAllowedOrigin(req: Request): string {
+  const origin = req.headers.get('Origin') || ''
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    return origin
+  }
+  return ALLOWED_ORIGINS[0]
 }
+
+function getCorsHeaders(req: Request) {
+  return {
+    'Access-Control-Allow-Origin': getAllowedOrigin(req),
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  }
+}
+
+const ROOM_ID_REGEX = /^[a-z0-9-]+$/
+const MAX_ROOM_ID_LENGTH = 64
+const MAX_QUERY_LENGTH = 500
 
 interface SearchRequest {
   room_id: string
@@ -45,6 +64,8 @@ async function embedQuery(text: string, apiKey: string): Promise<number[]> {
 }
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req)
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -63,10 +84,29 @@ serve(async (req) => {
     const { room_id, query }: SearchRequest = await req.json()
 
     if (!room_id || !query) {
-      throw new Error('Missing required fields: room_id, query')
+      return new Response(
+        JSON.stringify({ results: [], error: 'Missing required fields: room_id, query' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
     }
 
-    console.log(`Searching room: ${room_id}, query: "${query.substring(0, 100)}"`)
+    // Input validation
+    if (!ROOM_ID_REGEX.test(room_id) || room_id.length > MAX_ROOM_ID_LENGTH) {
+      return new Response(
+        JSON.stringify({ results: [], error: 'Invalid room_id. Must be lowercase alphanumeric with hyphens, max 64 chars.' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
+
+    if (query.length > MAX_QUERY_LENGTH) {
+      return new Response(
+        JSON.stringify({ results: [], error: `Query too long. Maximum ${MAX_QUERY_LENGTH} characters.` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
+
+    // Log search for rate monitoring (Supabase built-in edge function limits handle throttling)
+    console.log(`Search: room=${room_id}, query="${query.substring(0, 100)}"`)
 
     // 1. Check if room has any chunks (fast bail-out)
     const { count, error: countError } = await supabase
@@ -116,7 +156,7 @@ serve(async (req) => {
   } catch (error: any) {
     console.error('Search function error:', error)
     return new Response(
-      JSON.stringify({ results: [], error: error?.message || String(error) }),
+      JSON.stringify({ results: [], error: 'Search failed' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     )
   }

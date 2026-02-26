@@ -1,0 +1,125 @@
+.sync-status-container {
+  position: relative;
+}
+
+.sync-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.sync-status--clickable {
+  cursor: pointer;
+}
+
+.sync-status--clickable:hover {
+  background: #fef2f2;
+}
+
+/* Dots */
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sync-dot--saved {
+  background-color: #10b981;
+}
+
+.sync-dot--saving {
+  background-color: #10b981;
+  animation: sync-pulse 1.2s ease-in-out infinite;
+}
+
+.sync-dot--offline {
+  background-color: #f59e0b;
+}
+
+.sync-dot--error {
+  background-color: #ef4444;
+}
+
+@keyframes sync-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Labels */
+.sync-status--saved .sync-label {
+  color: #6b7280;
+}
+
+.sync-status--saving .sync-label {
+  color: #6b7280;
+}
+
+.sync-status--offline .sync-label {
+  color: #d97706;
+}
+
+.sync-status--error .sync-label {
+  color: #dc2626;
+}
+
+/* Recovery dropdown */
+.sync-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  min-width: 200px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.sync-dropdown-error {
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #991b1b;
+  background: #fef2f2;
+  border-bottom: 1px solid #fecaca;
+}
+
+.sync-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.sync-dropdown-item:hover {
+  background: #f9fafb;
+}
+
+.sync-dropdown-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sync-dropdown-item--danger {
+  color: #dc2626;
+}
+
+.sync-dropdown-item--danger:hover {
+  background: #fef2f2;
+}

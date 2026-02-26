@@ -80,6 +80,76 @@ class CollaborationManager {
     return this.currentRoomId;
   }
 
+  /**
+   * Get the current provider (for subscribing to connection status)
+   */
+  getProvider(): SimpleSupabaseProvider | null {
+    return this.provider;
+  }
+
+  /**
+   * Subscribe to provider status changes (connected/disconnected/failed)
+   * Returns an unsubscribe function
+   */
+  onProviderStatus(callback: (status: string) => void): () => void {
+    const handler = ({ status }: { status: string }) => callback(status);
+    this.provider?.on('status', handler);
+    return () => { this.provider?.off('status', handler); };
+  }
+
+  /**
+   * Reset a room to recover from corrupt state
+   * 'local': disconnect, delete IndexedDB + localStorage, reconnect fresh from DB
+   * 'full': same + delete document row from Supabase (starts completely fresh)
+   */
+  async resetRoom(roomId: string, mode: 'local' | 'full'): Promise<void> {
+    logger.log(`🔄 Resetting room ${roomId} (mode: ${mode})`);
+
+    // Disconnect everything
+    if (this.provider) {
+      this.provider.destroy();
+      this.provider = null;
+    }
+    if (this.indexeddbProvider) {
+      this.indexeddbProvider.destroy();
+      this.indexeddbProvider = null;
+    }
+    if (this.persistence) {
+      this.persistence.destroy();
+      this.persistence = null;
+    }
+    this.ydoc = null;
+    this.dbLoaded = false;
+    this.dbLoadPromise = null;
+    this.connectPromise = null;
+    this.currentRoomId = null;
+
+    // Delete IndexedDB for this room
+    const indexedDbName = `flashy-doc-${roomId}`;
+    try { indexedDB.deleteDatabase(indexedDbName); } catch {}
+
+    // Clear localStorage keys for this room
+    localStorage.removeItem(`flashy_last_visit_${roomId}`);
+
+    if (mode === 'full') {
+      // Delete the document from Supabase
+      const documentId = `room-${roomId}`;
+      try {
+        await supabase.from('documents').delete().eq('id', documentId);
+        await supabase.from('document_versions').delete().eq('document_id', documentId);
+        logger.log('🗑️ Deleted document from Supabase');
+      } catch (error) {
+        logger.error('Failed to delete from Supabase:', error);
+      }
+    }
+
+    logger.log('✅ Room reset complete — reconnecting...');
+
+    // Reconnect fresh
+    this.refCount = 0;
+    await this.connect(roomId);
+  }
+
   async connect(roomId?: string): Promise<{ ydoc: Doc; provider: SimpleSupabaseProvider; userInfo: { userId: string; color: string; name: string } }> {
     // If no roomId provided and we're already connected, reuse existing connection
     if (!roomId && this.currentRoomId && this.ydoc && this.provider) {
@@ -235,7 +305,8 @@ class CollaborationManager {
   private forceCleanup(): void {
     logger.log('🧹 Force cleanup for room switch');
     if (this.persistence) {
-      this.persistence.saveNow();
+      // Fire-and-forget save — don't block room switch, but let it complete
+      this.persistence.saveNow().catch(() => {});
       this.persistence.destroy();
     }
     this.indexeddbProvider?.destroy();
@@ -569,13 +640,13 @@ class CollaborationManager {
     if (this.refCount <= 0) {
       logger.log('⏳ Scheduling cleanup in 2s (in case of remount)...');
 
-      this.cleanupTimer = setTimeout(() => {
+      this.cleanupTimer = setTimeout(async () => {
         if (this.refCount <= 0) {
           logger.log('🧹 Cleaning up provider (confirmed no active references)');
 
-          // Final save before cleanup
+          // Await final save before destroying
           if (this.persistence) {
-            this.persistence.saveNow();
+            try { await this.persistence.saveNow(); } catch {}
             this.persistence.destroy();
           }
 

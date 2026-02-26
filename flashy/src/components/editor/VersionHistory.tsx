@@ -19,16 +19,18 @@ export function VersionHistory({ onRestore, roomId }: VersionHistoryProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [versions, setVersions] = useState<Version[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [confirmRestore, setConfirmRestore] = useState<Version | null>(null);
 
   const loadVersions = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
+    setError(null);
     try {
       // Get all versions from last 7 days
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
       const documentId = `room-${roomId}`;
-      const { data, error } = await supabase
+      const { data, error: queryError } = await supabase
         .from('document_versions')
         .select('version, created_at, last_edited_by')
         .eq('document_id', documentId)
@@ -37,14 +39,15 @@ export function VersionHistory({ onRestore, roomId }: VersionHistoryProps) {
         .limit(50)
         .abortSignal(signal!); // Cancel on unmount
 
-      if (error) throw error;
+      if (queryError) throw queryError;
 
       // Show all snapshots (no daily grouping)
       setVersions(data || []);
-    } catch (error: any) {
+    } catch (err: any) {
       // Ignore abort errors — component just unmounted
-      if (error?.name === 'AbortError') return;
-      logger.error('Error loading versions:', error);
+      if (err?.name === 'AbortError') return;
+      logger.error('Error loading versions:', err);
+      setError(err?.message || 'Failed to load version history');
     } finally {
       setLoading(false);
     }
@@ -68,8 +71,8 @@ export function VersionHistory({ onRestore, roomId }: VersionHistoryProps) {
       await onRestore(confirmRestore.version);
       setConfirmRestore(null);
       setIsOpen(false);
-    } catch (error) {
-      logger.error('❌ Restore failed:', error);
+    } catch (err) {
+      logger.error('❌ Restore failed:', err);
       alert('Restore failed. Check console for details.');
     }
   };
@@ -84,9 +87,15 @@ export function VersionHistory({ onRestore, roomId }: VersionHistoryProps) {
 
     const diffDays = Math.floor((today.getTime() - versionDate.getTime()) / (24 * 60 * 60 * 1000));
 
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
+    const timeStr = date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    if (diffDays === 0) return `Today at ${timeStr}`;
+    if (diffDays === 1) return `Yesterday at ${timeStr}`;
+    if (diffDays < 7) return `${diffDays} days ago at ${timeStr}`;
     if (diffDays < 30) {
       const weeks = Math.floor(diffDays / 7);
       return `${weeks} week${weeks > 1 ? 's' : ''} ago`;
@@ -124,9 +133,19 @@ export function VersionHistory({ onRestore, roomId }: VersionHistoryProps) {
             <div className="version-history-list">
               {loading ? (
                 <div className="version-history-loading">Loading...</div>
+              ) : error ? (
+                <div className="version-history-error">
+                  <p>{error}</p>
+                  <button
+                    className="version-history-retry"
+                    onClick={() => loadVersions()}
+                  >
+                    Retry
+                  </button>
+                </div>
               ) : versions.length === 0 ? (
                 <div className="version-history-empty">
-                  No snapshots yet. Start editing and they'll appear here!
+                  No snapshots yet. Snapshots are created automatically as you edit — they'll appear here shortly.
                 </div>
               ) : (
                 versions.map((version, index) => (

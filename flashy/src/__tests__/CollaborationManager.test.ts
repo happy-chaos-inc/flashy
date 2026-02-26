@@ -86,8 +86,11 @@ jest.mock('../lib/DocumentPersistence', () => ({
   DocumentPersistence: jest.fn().mockImplementation(() => ({
     loadFromDatabase: jest.fn().mockResolvedValue(false),
     enableAutoSave: jest.fn(),
-    saveNow: jest.fn(),
+    saveNow: jest.fn().mockResolvedValue(undefined),
     destroy: jest.fn(),
+    startPolling: jest.fn(),
+    on: jest.fn(),
+    off: jest.fn(),
   })),
 }));
 

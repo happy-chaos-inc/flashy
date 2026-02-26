@@ -34,7 +34,7 @@ export function UpdateNotification() {
         const currentMatch = document.querySelector('script[src*="main."]')?.getAttribute('src')?.match(/main\.([a-f0-9]+)\.js/);
 
         if (scriptMatch && currentMatch && scriptMatch[1] !== currentMatch[1]) {
-          logger.log('🎉 New version detected! Current:', currentMatch[1], 'New:', scriptMatch[1]);
+          logger.log('New version detected! Current:', currentMatch[1], 'New:', scriptMatch[1]);
           logger.log('⏳ Auto-reloading in 3 seconds...');
           setUpdateAvailable(true);
 
@@ -87,7 +87,7 @@ export function UpdateNotification() {
   return (
     <div className="update-notification">
       <div className="update-content">
-        <span>🎉 New version detected! Auto-reloading in 3s...</span>
+        <span>New version detected! Auto-reloading in 3s...</span>
       </div>
     </div>
   );

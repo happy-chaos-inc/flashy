@@ -259,6 +259,7 @@ export function ChatSidebar({ roomId, onClose }: ChatSidebarProps) {
   const ySendRequestRef = useRef<Y.Map<any> | null>(null);
   const providerRef = useRef<any>(null);
   const clientIdRef = useRef<number>(0);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isSendingRef = useRef(false);
   const respondedMessagesRef = useRef<Set<string>>(new Set());
   const pendingFilesRef = useRef<Map<string, PendingFileData>>(new Map());
@@ -731,6 +732,7 @@ export function ChatSidebar({ roomId, onClose }: ChatSidebarProps) {
 
     return () => {
       if (cleanup) cleanup();
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -838,8 +840,8 @@ export function ChatSidebar({ roomId, onClose }: ChatSidebarProps) {
       if (providerRef.current) {
         providerRef.current.awareness.setLocalStateField('chatTyping', activeThreadId);
         // Clear typing after 2 seconds of no typing
-        if ((window as any).__typingTimeout) clearTimeout((window as any).__typingTimeout);
-        (window as any).__typingTimeout = setTimeout(() => {
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => {
           if (providerRef.current) {
             providerRef.current.awareness.setLocalStateField('chatTyping', null);
           }

@@ -4,6 +4,7 @@ import { MarkdownEditor } from '../components/editor/MarkdownEditor';
 import { TiptapEditor } from '../components/editor/TiptapEditor';
 import { CollaborativeCanvas } from '../components/editor/CollaborativeCanvas';
 import { VersionHistory } from '../components/editor/VersionHistory';
+import { SyncStatus } from '../components/editor/SyncStatus';
 import { OnlineUsers } from '../components/editor/OnlineUsers';
 import { MouseCursors } from '../components/editor/MouseCursors';
 import { Logo } from '../components/Logo';
@@ -558,6 +559,7 @@ export function EditorPage({ roomId }: EditorPageProps) {
         <SearchBar roomId={roomId} />
         <div className="header-actions">
           <OnlineUsers onUserClick={handleUserClick} />
+          <SyncStatus roomId={roomId} />
           <button onClick={handleShare} className="share-button" title="Copy room link">
             {copied ? <Check size={20} /> : <Share2 size={20} />}
             <span>{copied ? 'Copied!' : 'Share'}</span>

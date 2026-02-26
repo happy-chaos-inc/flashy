@@ -15,7 +15,9 @@ export function generateUserInfo() {
   // Generate or retrieve user ID from session storage
   let userId = sessionStorage.getItem('flashy_user_id');
   if (!userId) {
-    userId = `user-${Math.random().toString(36).substr(2, 9)}`;
+    const bytes = new Uint8Array(12);
+    crypto.getRandomValues(bytes);
+    userId = `user-${Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')}`;
     sessionStorage.setItem('flashy_user_id', userId);
   }
 

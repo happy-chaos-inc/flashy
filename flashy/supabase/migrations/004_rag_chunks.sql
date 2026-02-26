@@ -80,11 +80,11 @@ BEGIN
       dc.chunk_index,
       dc.text_content,
       dc.metadata,
-      ROW_NUMBER() OVER (ORDER BY ts_rank_cd(dc.search_vector, websearch_to_tsquery('english', query_text)) DESC) AS rank
+      ROW_NUMBER() OVER (ORDER BY ts_rank_cd(dc.search_vector, plainto_tsquery('english', query_text)) DESC) AS rank
     FROM document_chunks dc
     WHERE dc.room_id = p_room_id
-      AND dc.search_vector @@ websearch_to_tsquery('english', query_text)
-    ORDER BY ts_rank_cd(dc.search_vector, websearch_to_tsquery('english', query_text)) DESC
+      AND dc.search_vector @@ plainto_tsquery('english', query_text)
+    ORDER BY ts_rank_cd(dc.search_vector, plainto_tsquery('english', query_text)) DESC
     LIMIT match_count * 2
   ),
   combined AS (

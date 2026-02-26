@@ -4,10 +4,31 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+const ALLOWED_ORIGINS = [
+  'https://happy-chaos-inc.github.io',
+  'http://localhost:3000',
+]
+
+function getAllowedOrigin(req: Request): string {
+  const origin = req.headers.get('Origin') || ''
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    return origin
+  }
+  return ALLOWED_ORIGINS[0]
 }
+
+function getCorsHeaders(req: Request) {
+  return {
+    'Access-Control-Allow-Origin': getAllowedOrigin(req),
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  }
+}
+
+const ROOM_ID_REGEX = /^[a-z0-9-]+$/
+const MAX_ROOM_ID_LENGTH = 64
+const MAX_FILE_NAME_LENGTH = 255
+const MAX_TEXT_CONTENT_LENGTH = 500000
+const MAX_CHUNKS_PER_ROOM = 500
 
 interface EmbedRequest {
   room_id: string
@@ -96,6 +117,8 @@ async function embedTexts(texts: string[], apiKey: string): Promise<number[][]> 
 }
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req)
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -114,7 +137,49 @@ serve(async (req) => {
     const { room_id, file_name, text_content, file_id }: EmbedRequest = await req.json()
 
     if (!room_id || !file_name || !text_content) {
-      throw new Error('Missing required fields: room_id, file_name, text_content')
+      return new Response(
+        JSON.stringify({ success: false, error: 'Missing required fields: room_id, file_name, text_content' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
+
+    // Input validation
+    if (!ROOM_ID_REGEX.test(room_id) || room_id.length > MAX_ROOM_ID_LENGTH) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid room_id. Must be lowercase alphanumeric with hyphens, max 64 chars.' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
+
+    if (file_name.length > MAX_FILE_NAME_LENGTH || file_name.includes('..') || file_name.includes('/')) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid file_name. Max 255 chars, no ".." or "/" allowed.' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
+
+    if (text_content.length > MAX_TEXT_CONTENT_LENGTH) {
+      return new Response(
+        JSON.stringify({ success: false, error: `text_content too large. Maximum ${MAX_TEXT_CONTENT_LENGTH} characters.` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
+
+    // Rate limiting: check existing chunk count for this room
+    const { count: existingChunks, error: countError } = await supabase
+      .from('document_chunks')
+      .select('*', { count: 'exact', head: true })
+      .eq('room_id', room_id)
+
+    if (countError) {
+      console.error('Error checking chunk count:', countError)
+    }
+
+    if (existingChunks && existingChunks > MAX_CHUNKS_PER_ROOM) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Embedding limit reached for this room.' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 429 }
+      )
     }
 
     console.log(`Embedding file: ${file_name} for room: ${room_id}, content length: ${text_content.length}`)
@@ -174,7 +239,7 @@ serve(async (req) => {
   } catch (error: any) {
     console.error('Embed function error:', error)
     return new Response(
-      JSON.stringify({ success: false, error: error?.message || String(error) }),
+      JSON.stringify({ success: false, error: 'Embedding failed' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     )
   }

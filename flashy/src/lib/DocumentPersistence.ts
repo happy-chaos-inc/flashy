@@ -10,6 +10,11 @@ import { logger } from './logger';
 
 const SAVE_DEBOUNCE_MS = 800; // Save quickly for faster cross-peer sync
 
+// Retry configuration
+const MAX_RETRIES = 5;
+const INITIAL_RETRY_DELAY = 2000; // 2 seconds
+const MAX_RETRY_DELAY = 30000; // 30 seconds
+
 // Safe base64 encoding for large Uint8Arrays (avoids stack overflow)
 function uint8ArrayToBase64(bytes: Uint8Array): string {
   let binary = '';
@@ -21,9 +26,20 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+// Safe base64 decoding — returns null on corrupted data instead of crashing
+function safeBase64Decode(base64: string): Uint8Array | null {
+  try {
+    return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  } catch {
+    return null;
+  }
+}
+
 // Version snapshot configuration
 const SNAPSHOT_EVERY_N_SAVES = 5; // Take snapshot every 5th save
 const SNAPSHOT_EVERY_SECONDS = 120; // OR every 2 minutes (120 seconds)
+
+export type SaveStatus = 'saving' | 'saved' | 'error';
 
 export class DocumentPersistence {
   private doc: Y.Doc;
@@ -33,9 +49,39 @@ export class DocumentPersistence {
   private saveCount: number = 0; // Track number of saves for snapshot sampling
   private pollTimer: NodeJS.Timeout | null = null;
 
+  // Event emitter
+  private eventHandlers: Map<string, Set<Function>> = new Map();
+
+  // Retry state
+  private retryCount: number = 0;
+  private retryTimer: NodeJS.Timeout | null = null;
+  private lastErrorMessage: string | null = null;
+
   constructor(doc: Y.Doc, roomId: string = 'default') {
     this.doc = doc;
     this.documentId = `room-${roomId}`; // Each room has its own document
+  }
+
+  // Event emitter methods (matching SimpleSupabaseProvider's pattern)
+  on(event: string, handler: Function): void {
+    if (!this.eventHandlers.has(event)) {
+      this.eventHandlers.set(event, new Set());
+    }
+    this.eventHandlers.get(event)!.add(handler);
+  }
+
+  off(event: string, handler: Function): void {
+    const handlers = this.eventHandlers.get(event);
+    if (handlers) {
+      handlers.delete(handler);
+    }
+  }
+
+  private emit(event: string, ...args: any[]): void {
+    const handlers = this.eventHandlers.get(event);
+    if (handlers) {
+      handlers.forEach(handler => handler(...args));
+    }
   }
 
   /**
@@ -65,7 +111,11 @@ export class DocumentPersistence {
 
       if (doc.yjs_state) {
         // Decode base64 and apply state
-        const stateVector = Uint8Array.from(atob(doc.yjs_state), c => c.charCodeAt(0));
+        const stateVector = safeBase64Decode(doc.yjs_state);
+        if (!stateVector) {
+          logger.error('❌ Corrupted base64 state in database');
+          return false;
+        }
         Y.applyUpdate(this.doc, stateVector);
 
         logger.log('✅ Loaded document from database');
@@ -90,6 +140,12 @@ export class DocumentPersistence {
       clearTimeout(this.saveTimeout);
     }
 
+    // Cancel any pending retry — new edit means a new save will include all state
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+
     // Schedule new save
     this.saveTimeout = setTimeout(() => {
       this.saveNow();
@@ -107,6 +163,7 @@ export class DocumentPersistence {
     }
 
     this.isSaving = true;
+    this.emit('save-status', { status: 'saving' as SaveStatus });
 
     try {
       const localLength = this.doc.getText('content').length;
@@ -118,13 +175,17 @@ export class DocumentPersistence {
         });
 
         if (data && data[0]?.yjs_state) {
-          const dbState = Uint8Array.from(atob(data[0].yjs_state), c => c.charCodeAt(0));
-          // Merge database state with local - CRDT handles conflicts
-          Y.applyUpdate(this.doc, dbState);
+          const dbState = safeBase64Decode(data[0].yjs_state);
+          if (!dbState) {
+            logger.warn('⚠️  Corrupted base64 in database state, skipping merge');
+          } else {
+            // Merge database state with local - CRDT handles conflicts
+            Y.applyUpdate(this.doc, dbState);
 
-          const mergedLength = this.doc.getText('content').length;
-          if (mergedLength !== localLength) {
-            logger.log('🔀 Merged database changes before saving:', localLength, '→', mergedLength, 'chars');
+            const mergedLength = this.doc.getText('content').length;
+            if (mergedLength !== localLength) {
+              logger.log('🔀 Merged database changes before saving:', localLength, '→', mergedLength, 'chars');
+            }
           }
         }
       } catch (mergeError) {
@@ -160,6 +221,7 @@ export class DocumentPersistence {
 
       if (error) {
         logger.error('❌ Save failed:', error);
+        this.handleSaveError(error.message || 'Save failed');
         return;
       }
 
@@ -172,10 +234,40 @@ export class DocumentPersistence {
           logger.log('📸 Version snapshot created!');
         }
       }
-    } catch (error) {
+
+      // Success — reset retry state
+      this.retryCount = 0;
+      this.lastErrorMessage = null;
+      this.emit('save-status', { status: 'saved' as SaveStatus });
+    } catch (error: any) {
       logger.error('❌ Error saving document:', error);
+      this.handleSaveError(error?.message || 'Network error');
     } finally {
       this.isSaving = false;
+    }
+  }
+
+  /**
+   * Handle a failed save — emit error and schedule retry with exponential backoff
+   */
+  private handleSaveError(message: string): void {
+    this.lastErrorMessage = message;
+    this.emit('save-status', { status: 'error' as SaveStatus, message });
+
+    if (this.retryCount < MAX_RETRIES) {
+      const delay = Math.min(
+        INITIAL_RETRY_DELAY * Math.pow(2, this.retryCount),
+        MAX_RETRY_DELAY
+      );
+      this.retryCount++;
+      logger.log(`🔄 Retrying save in ${delay}ms (attempt ${this.retryCount}/${MAX_RETRIES})`);
+
+      this.retryTimer = setTimeout(() => {
+        this.retryTimer = null;
+        this.saveNow();
+      }, delay);
+    } else {
+      logger.error('❌ Max save retries reached — giving up until next edit');
     }
   }
 
@@ -229,7 +321,11 @@ export class DocumentPersistence {
 
       if (data && data.yjs_state) {
         // Decode and apply the historical state
-        const stateVector = Uint8Array.from(atob(data.yjs_state), c => c.charCodeAt(0));
+        const stateVector = safeBase64Decode(data.yjs_state);
+        if (!stateVector) {
+          logger.error('❌ Corrupted version snapshot');
+          return false;
+        }
 
         // Clear current state and apply historical state
         this.doc.transact(() => {
@@ -271,8 +367,10 @@ export class DocumentPersistence {
 
         const doc = data[0];
         if (doc.yjs_state) {
-          const stateVector = Uint8Array.from(atob(doc.yjs_state), c => c.charCodeAt(0));
-          Y.applyUpdate(this.doc, stateVector);
+          const stateVector = safeBase64Decode(doc.yjs_state);
+          if (stateVector) {
+            Y.applyUpdate(this.doc, stateVector);
+          }
         }
       } catch {
         // Non-critical — will retry on next interval
@@ -297,6 +395,10 @@ export class DocumentPersistence {
   destroy(): void {
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
+    }
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
     }
     this.stopPolling();
   }

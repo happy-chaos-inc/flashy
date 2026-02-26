@@ -44,7 +44,7 @@ export function LandingPage() {
     }
 
     // Basic validation
-    if (!/^[a-z0-9]+$/.test(roomId)) {
+    if (!/^[a-z0-9]+$/.test(roomId) || roomId.length > 64) {
       setError('Invalid room code');
       return;
     }

@@ -12,7 +12,7 @@ const MAX_SENT_ERRORS = 100;
 // Rate limiting: max errors per minute
 let errorCount = 0;
 const MAX_ERRORS_PER_MINUTE = 10;
-setInterval(() => { errorCount = 0; }, 60000);
+let rateLimitTimer: ReturnType<typeof setInterval> | null = null;
 
 interface ErrorReport {
   message: string;
@@ -81,9 +81,17 @@ function getContext(): Pick<ErrorReport, 'room_id' | 'user_agent' | 'url' | 'ses
  * Call this once at app startup
  */
 export function initErrorReporter(): void {
+  // Start rate limit reset timer (store handle for cleanup)
+  if (!rateLimitTimer) {
+    rateLimitTimer = setInterval(() => { errorCount = 0; }, 60000);
+  }
+
   // Generate session ID if not exists
   if (!sessionStorage.getItem('flashy_session_id')) {
-    sessionStorage.setItem('flashy_session_id', `session-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const bytes = new Uint8Array(8);
+    crypto.getRandomValues(bytes);
+    const id = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    sessionStorage.setItem('flashy_session_id', `session-${id}`);
   }
 
   // Uncaught errors

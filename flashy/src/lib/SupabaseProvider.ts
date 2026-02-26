@@ -13,6 +13,7 @@ export class SupabaseProvider {
   synced: boolean = false;
   connected: boolean = false;
   private eventListeners: Map<string, Set<EventCallback>> = new Map();
+  private connectCheckTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(doc: Y.Doc, supabaseClient: SupabaseClient<any>, channelName: string, docName: string = 'default') {
     this.doc = doc;
@@ -182,7 +183,7 @@ export class SupabaseProvider {
       });
 
     // WORKAROUND: Check if already connected (callback might not fire)
-    setTimeout(() => {
+    this.connectCheckTimer = setTimeout(() => {
       const state = (this.channel as any).state;
       console.log('🔍 Checking channel state after subscribe:', state);
 
@@ -227,6 +228,11 @@ export class SupabaseProvider {
   }
 
   destroy(): void {
+    if (this.connectCheckTimer) {
+      clearTimeout(this.connectCheckTimer);
+      this.connectCheckTimer = null;
+    }
+
     this.doc.off('update', this.handleDocUpdate);
     this.awareness.off('update', this.handleAwarenessUpdate);
 

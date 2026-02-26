@@ -347,6 +347,8 @@ export class SimpleSupabaseProvider {
         // Queue for later if disconnected
         if (this.pendingUpdates.length < this.maxPendingUpdates) {
           this.pendingUpdates.push(update);
+        } else {
+          logger.warn('SimpleProvider: Offline queue full, update dropped. Edits are still saved locally via IndexedDB.');
         }
         return;
       }
