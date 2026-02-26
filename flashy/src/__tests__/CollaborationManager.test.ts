@@ -74,14 +74,6 @@ jest.mock('../config/supabase', () => ({
   },
 }));
 
-jest.mock('y-indexeddb', () => ({
-  IndexeddbPersistence: jest.fn().mockImplementation(() => ({
-    on: jest.fn(),
-    destroy: jest.fn(),
-    whenSynced: Promise.resolve(),
-  })),
-}));
-
 jest.mock('../lib/DocumentPersistence', () => ({
   DocumentPersistence: jest.fn().mockImplementation(() => ({
     loadFromDatabase: jest.fn().mockResolvedValue(false),

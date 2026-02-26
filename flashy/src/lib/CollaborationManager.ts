@@ -1,6 +1,5 @@
 // Singleton manager for collaboration
 import { Doc, Text as YText, Array as YArray, XmlElement, XmlText, XmlFragment } from 'yjs';
-import { IndexeddbPersistence } from 'y-indexeddb';
 import { SimpleSupabaseProvider } from './SimpleSupabaseProvider';
 import { DocumentPersistence } from './DocumentPersistence';
 import { supabase } from '../config/supabase';
@@ -47,7 +46,6 @@ class CollaborationManager {
   private static instance: CollaborationManager | null = null;
   private ydoc: Doc | null = null;
   private provider: SimpleSupabaseProvider | null = null;
-  private indexeddbProvider: IndexeddbPersistence | null = null;
   public persistence: DocumentPersistence | null = null; // Public for version history UI
 
   /** Synchronous access to the current Y.Doc (null if not connected) */
@@ -99,7 +97,7 @@ class CollaborationManager {
 
   /**
    * Reset a room to recover from corrupt state
-   * 'local': disconnect, delete IndexedDB + localStorage, reconnect fresh from DB
+   * 'local': disconnect, reconnect fresh from DB
    * 'full': same + delete document row from Supabase (starts completely fresh)
    */
   async resetRoom(roomId: string, mode: 'local' | 'full'): Promise<void> {
@@ -110,10 +108,6 @@ class CollaborationManager {
       this.provider.destroy();
       this.provider = null;
     }
-    if (this.indexeddbProvider) {
-      this.indexeddbProvider.destroy();
-      this.indexeddbProvider = null;
-    }
     if (this.persistence) {
       this.persistence.destroy();
       this.persistence = null;
@@ -123,13 +117,6 @@ class CollaborationManager {
     this.dbLoadPromise = null;
     this.connectPromise = null;
     this.currentRoomId = null;
-
-    // Delete IndexedDB for this room
-    const indexedDbName = `flashy-doc-${roomId}`;
-    try { indexedDB.deleteDatabase(indexedDbName); } catch {}
-
-    // Clear localStorage keys for this room
-    localStorage.removeItem(`flashy_last_visit_${roomId}`);
 
     if (mode === 'full') {
       // Delete the document from Supabase
@@ -213,32 +200,6 @@ class CollaborationManager {
 
       this.ydoc = new Doc();
 
-      // Staleness detection: if IndexedDB is old (>1hr), it may be from a
-      // different document lineage and merging it with the server state would
-      // produce garbage (duplicate content). Delete it so we start fresh from
-      // Supabase. If Supabase also fails, the auto-save guard (below) prevents
-      // overwriting good server data with an empty doc.
-      const lastVisitKey = `flashy_last_visit_${roomId}`;
-      const lastVisit = localStorage.getItem(lastVisitKey);
-      const now = Date.now();
-      const oneHour = 60 * 60 * 1000;
-      const indexedDbName = `flashy-doc-${roomId}`;
-
-      if (lastVisit && (now - parseInt(lastVisit)) > oneHour) {
-        logger.log('🧹 IndexedDB is stale (>1hr old), clearing to avoid merge conflicts...');
-        try { indexedDB.deleteDatabase(indexedDbName); } catch {}
-        logger.log('✅ Stale IndexedDB cleared — will load fresh from Supabase');
-      }
-
-      // Update last visit timestamp
-      localStorage.setItem(lastVisitKey, now.toString());
-
-      // Add IndexedDB persistence for local sync (per room)
-      this.indexeddbProvider = new IndexeddbPersistence(indexedDbName, this.ydoc);
-      this.indexeddbProvider.on('synced', () => {
-        logger.log('💾 IndexedDB synced - local data loaded');
-      });
-
       // Create provider for real-time sync (channel per room)
       const channelName = `room-${roomId}`;
       this.provider = new SimpleSupabaseProvider(this.ydoc, supabase, channelName);
@@ -309,9 +270,7 @@ class CollaborationManager {
       this.persistence.saveNow().catch(() => {});
       this.persistence.destroy();
     }
-    this.indexeddbProvider?.destroy();
     this.provider?.destroy();
-    this.indexeddbProvider = null;
     this.provider = null;
     this.persistence = null;
     this.ydoc = null;
@@ -360,35 +319,16 @@ class CollaborationManager {
     if (this.dbLoaded || !this.persistence || !this.ydoc) return;
 
     try {
-      logger.log('🔄 Merging CRDT states: IndexedDB + Database...');
+      logger.log('🔄 Loading document from Supabase...');
 
-      // Get IndexedDB state BEFORE loading database
-      // This preserves any local offline edits
-      const indexedDBLength = this.ydoc.getText('content').length;
-
-      logger.log('📊 IndexedDB state:', indexedDBLength, 'chars');
-
-      // Load from database - this will MERGE with IndexedDB via CRDT
       const loaded = await this.persistence.loadFromDatabase();
       this.dbLoaded = true;
 
-      const finalLength = this.ydoc.getText('content').length;
-
       if (loaded) {
-        logger.log('✅ CRDT merge complete!');
-        logger.log('   IndexedDB had:', indexedDBLength, 'chars');
-        logger.log('   Merged result:', finalLength, 'chars');
-
-        // If merged result is different, it means we had offline edits
-        if (finalLength > indexedDBLength) {
-          logger.log('🔀 Database had newer content - merged via CRDT');
-        } else if (finalLength < indexedDBLength) {
-          logger.log('🔀 IndexedDB had newer content - merged via CRDT');
-        } else if (indexedDBLength > 0) {
-          logger.log('✓ Both sources had same content');
-        }
+        const finalLength = this.ydoc.getText('content').length;
+        logger.log('✅ Document loaded from Supabase:', finalLength, 'chars');
       } else {
-        logger.log('📝 No database content, using IndexedDB state only');
+        logger.log('📝 No database content — starting fresh');
       }
 
       // Seed new rooms with a typing animation (only when created via "Create Room" button)
@@ -408,17 +348,9 @@ class CollaborationManager {
       this.addBeforeUnloadHandler();
     } catch (error) {
       logger.error('❌ Failed to load from database:', error);
-      // Only enable auto-save if we have SOME local content (from IndexedDB).
-      // If the doc is empty AND the db load failed, don't auto-save — that would
-      // overwrite the database with an empty state.
-      const xmlFragment = this.ydoc?.getXmlFragment('prosemirror');
-      const hasLocalContent = xmlFragment && xmlFragment.length > 0;
-      if (hasLocalContent) {
-        logger.log('📝 IndexedDB has content, enabling auto-save');
-        this.persistence?.enableAutoSave();
-      } else {
-        logger.warn('⚠️ No local content and database load failed — auto-save disabled to prevent data loss');
-      }
+      // Doc is empty and DB load failed — don't auto-save or we'd
+      // overwrite good server data with an empty document.
+      logger.warn('⚠️ Database load failed — auto-save disabled to prevent data loss');
     }
   }
 
@@ -650,9 +582,7 @@ class CollaborationManager {
             this.persistence.destroy();
           }
 
-          this.indexeddbProvider?.destroy();
           this.provider?.destroy();
-          this.indexeddbProvider = null;
           this.provider = null;
           this.persistence = null;
           this.ydoc = null;

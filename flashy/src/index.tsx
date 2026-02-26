@@ -9,6 +9,26 @@ import { initErrorReporter } from './lib/errorReporter';
 // Initialize error reporting to Supabase
 initErrorReporter();
 
+// One-time cleanup: delete all stale IndexedDB databases from when the app
+// used y-indexeddb for local caching. This is no longer used — Supabase is
+// the single source of truth. Without this cleanup, stale IndexedDB data can
+// cause document divergence and page freezes on merge.
+(async () => {
+  try {
+    if ('indexedDB' in window && typeof indexedDB.databases === 'function') {
+      const dbs = await indexedDB.databases();
+      for (const db of dbs) {
+        if (db.name && db.name.startsWith('flashy-doc-')) {
+          indexedDB.deleteDatabase(db.name);
+          console.log('[Flashy] Cleaned up stale IndexedDB:', db.name);
+        }
+      }
+    }
+  } catch {
+    // indexedDB.databases() not supported in all browsers — safe to ignore
+  }
+})();
+
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
 );
