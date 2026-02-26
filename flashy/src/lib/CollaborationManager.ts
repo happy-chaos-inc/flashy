@@ -213,20 +213,10 @@ class CollaborationManager {
       // Connect first to sync awareness states
       this.provider.connect();
 
-      // Database polling as safety net — always running, speed depends on channel health
-      // Connected: slow poll (5s) catches any missed broadcasts
-      // Disconnected: fast poll (2s) is the primary sync mechanism
-      this.persistence?.startPolling(5_000);
-
-      this.provider.on('status', ({ status }: { status: string }) => {
-        if (status === 'disconnected' || status === 'failed') {
-          this.persistence?.startPolling(2_000);
-        } else if (status === 'connected') {
-          // Channel recovered — slower poll as safety net, plus one immediate sync
-          this.persistence?.startPolling(5_000);
-          this.persistence?.loadFromDatabase().catch(() => {});
-        }
-      });
+      // NOTE: Database polling REMOVED — it was applying full DB state via
+      // Y.applyUpdate every few seconds, causing CRDT lineage divergence and
+      // content duplication. Real-time provider is the sole sync mechanism.
+      // Initial load from DB happens once in loadFromDatabase().
 
       // Wait for initial awareness sync, then check room capacity
       await this.checkRoomCapacity();
@@ -357,7 +347,7 @@ class CollaborationManager {
       // Enable auto-save after loading — but ONLY if doc has content.
       // An empty doc for an existing room should never overwrite server data.
       if (isNewRoom || xmlFragment.length > 0) {
-        this.persistence.enableAutoSave();
+        this.persistence.enableAutoSave([this.provider]);
       } else {
         logger.warn('⚠️ Document is empty for existing room after retries — auto-save disabled to prevent data loss');
       }

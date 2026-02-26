@@ -47,6 +47,8 @@ export class DocumentPersistence {
   private saveTimeout: NodeJS.Timeout | null = null;
   private isSaving = false;
   private saveCount: number = 0; // Track number of saves for snapshot sampling
+  private lastKnownVersion: number = 0; // Track server version to pass conflict check
+  private pendingSave: boolean = false; // True if a save was requested while another was in progress
   private pollTimer: NodeJS.Timeout | null = null;
 
   // Event emitter
@@ -116,10 +118,15 @@ export class DocumentPersistence {
           logger.error('❌ Corrupted base64 state in database');
           return false;
         }
-        Y.applyUpdate(this.doc, stateVector);
+        Y.applyUpdate(this.doc, stateVector, this);
+
+        // Track the server version so saves pass the conflict check
+        if (doc.version) {
+          this.lastKnownVersion = doc.version;
+        }
 
         logger.log('✅ Loaded document from database');
-        logger.log('   Last updated:', doc.updated_at);
+        logger.log('   Last updated:', doc.updated_at, '| Version:', doc.version || 'unknown');
         logger.log('   Content length:', this.doc.getText('content').length, 'chars');
         return true;
       }
@@ -153,12 +160,13 @@ export class DocumentPersistence {
   }
 
   /**
-   * Immediately save to database with proper CRDT merge
-   * Loads database state, merges with local, then saves result
+   * Immediately save local state to database.
+   * Does NOT load/merge DB state first — that caused content duplication.
    */
   async saveNow(): Promise<void> {
     if (this.isSaving) {
-      logger.log('⏸️  Save already in progress, skipping');
+      logger.log('⏸️  Save already in progress, queuing follow-up');
+      this.pendingSave = true;
       return;
     }
 
@@ -166,39 +174,24 @@ export class DocumentPersistence {
     this.emit('save-status', { status: 'saving' as SaveStatus });
 
     try {
-      const localLength = this.doc.getText('content').length;
-
-      // STEP 1: Load latest from database and merge (in case we missed real-time updates)
-      try {
-        const { data } = await supabase.rpc('get_document', {
-          p_document_id: this.documentId,
-        });
-
-        if (data && data[0]?.yjs_state) {
-          const dbState = safeBase64Decode(data[0].yjs_state);
-          if (!dbState) {
-            logger.warn('⚠️  Corrupted base64 in database state, skipping merge');
-          } else {
-            // Merge database state with local - CRDT handles conflicts
-            Y.applyUpdate(this.doc, dbState);
-
-            const mergedLength = this.doc.getText('content').length;
-            if (mergedLength !== localLength) {
-              logger.log('🔀 Merged database changes before saving:', localLength, '→', mergedLength, 'chars');
-            }
-          }
-        }
-      } catch (mergeError) {
-        logger.warn('⚠️  Could not merge database state (continuing with local):', mergeError);
-      }
-
-      // STEP 2: Get merged Yjs state
-      const stateVector = Y.encodeStateAsUpdate(this.doc);
-      const base64State = uint8ArrayToBase64(stateVector);
-
-      // Get text content for searching/preview
+      // GUARD: Never save an empty document — this would overwrite real content
+      // in Supabase. If the doc is empty, something went wrong with loading.
+      const xmlFragment = this.doc.getXmlFragment('prosemirror');
       const ytext = this.doc.getText('content');
       const textContent = ytext.toString();
+
+      if (xmlFragment.length === 0 && textContent.length === 0) {
+        logger.warn('🛡️ BLOCKED: Refusing to save empty document — would overwrite server data');
+        this.emit('save-status', { status: 'saved' as SaveStatus });
+        return;
+      }
+
+      // Save local state directly to database — NO merge-on-save.
+      // Real-time sync via the provider handles conflict resolution.
+      // Merging DB state before saving causes CRDT lineage divergence
+      // which duplicates content (the #1 cause of the 530→332 card bug).
+      const stateVector = Y.encodeStateAsUpdate(this.doc);
+      const base64State = uint8ArrayToBase64(stateVector);
 
       logger.log('💾 Saving document to Supabase...', textContent.length, 'characters');
       logger.log('   Content preview:', textContent.substring(0, 100) + (textContent.length > 100 ? '...' : ''));
@@ -206,7 +199,11 @@ export class DocumentPersistence {
       // Increment save counter
       this.saveCount++;
 
-      // Use RPC to save current state (no version checking - CRDT handles conflicts)
+      // Use RPC to save current state.
+      // p_min_version uses the last known server version so the RPC's
+      // conflict check (v_current_version > p_min_version) passes.
+      // CRDT handles merge conflicts — the version check is just for
+      // ordering, not for rejecting writes.
       const { data, error } = await supabase.rpc('upsert_document_rpc', {
         p_id: this.documentId,
         p_title: 'Main Document',
@@ -214,22 +211,36 @@ export class DocumentPersistence {
         p_yjs_state_base64: base64State,
         p_content_text: textContent,
         p_last_edited_by: sessionStorage.getItem('flashy_username') || 'anonymous',
-        p_min_version: 0, // No conflict checking - always accept
-        p_snapshot_every_n: SNAPSHOT_EVERY_N_SAVES, // Take snapshot every 10 saves
-        p_snapshot_every_seconds: SNAPSHOT_EVERY_SECONDS, // OR every 5 minutes
+        p_min_version: this.lastKnownVersion, // Pass last known version so conflict check passes
+        p_snapshot_every_n: SNAPSHOT_EVERY_N_SAVES,
+        p_snapshot_every_seconds: SNAPSHOT_EVERY_SECONDS,
       });
 
       if (error) {
-        logger.error('❌ Save failed:', error);
+        logger.error('❌ Save failed (RPC error):', error);
         this.handleSaveError(error.message || 'Save failed');
+        return;
+      }
+
+      // Check the RPC's success field — it returns {success: false} on conflict
+      if (data && data.success === false) {
+        logger.warn('⚠️ Save rejected by server:', data.message);
+        // Update our known version so the next save passes
+        if (data.server_version) {
+          this.lastKnownVersion = data.server_version;
+        }
+        // Don't treat as error — just retry with updated version
+        this.scheduleSave();
         return;
       }
 
       if (data) {
         logger.log('✅ Document saved successfully');
         logger.log('   Status:', data.message);
-
-        // Log if snapshot was created
+        // Track server version for future saves
+        if (data.server_version) {
+          this.lastKnownVersion = data.server_version;
+        }
         if (data.message?.includes('snapshot')) {
           logger.log('📸 Version snapshot created!');
         }
@@ -244,6 +255,11 @@ export class DocumentPersistence {
       this.handleSaveError(error?.message || 'Network error');
     } finally {
       this.isSaving = false;
+      // If a save was requested while we were saving, schedule it now
+      if (this.pendingSave) {
+        this.pendingSave = false;
+        this.scheduleSave();
+      }
     }
   }
 
@@ -274,10 +290,21 @@ export class DocumentPersistence {
   /**
    * Start auto-saving when document changes
    */
-  enableAutoSave(): void {
-    logger.log('🔄 Auto-save enabled (saves 2s after changes)');
+  enableAutoSave(remoteOrigins?: any[]): void {
+    logger.log('🔄 Auto-save enabled (saves on LOCAL changes only)');
 
-    this.doc.on('update', () => {
+    this.doc.on('update', (_update: Uint8Array, origin: any) => {
+      // CRITICAL: Only save on LOCAL edits, NOT remote updates.
+      // Without this check, every keystroke from any user triggers saves
+      // on ALL connected clients (N users = N saves per edit), which
+      // hammers Supabase and caused the 100% CPU spike.
+      //
+      // Remote origins: the SimpleSupabaseProvider instance (passed as `this`
+      // in Y.applyUpdate calls), or the DocumentPersistence instance itself
+      // (when loading from DB).
+      if (origin != null && (origin === this || (remoteOrigins && remoteOrigins.includes(origin)))) {
+        return; // Remote update — don't save, the sender will save their own state
+      }
       this.scheduleSave();
     });
   }
@@ -350,32 +377,15 @@ export class DocumentPersistence {
   }
 
   /**
-   * Start polling the database for updates (fallback when realtime channel is down)
-   * Loads latest state and merges with local Y.Doc every interval
+   * Start polling — DISABLED.
+   * Polling applied full DB state via Y.applyUpdate every few seconds,
+   * which caused CRDT lineage divergence and content duplication.
+   * Real-time sync via the provider is the only safe sync mechanism.
+   * Initial load from DB happens once in loadFromDatabase().
    */
-  startPolling(intervalMs: number = 15_000): void {
-    this.stopPolling();
-    logger.log('📡 Database polling started (channel fallback, every', intervalMs / 1000, 's)');
-
-    this.pollTimer = setInterval(async () => {
-      try {
-        const { data, error } = await supabase.rpc('get_document', {
-          p_document_id: this.documentId,
-        });
-
-        if (error || !data || !Array.isArray(data) || data.length === 0) return;
-
-        const doc = data[0];
-        if (doc.yjs_state) {
-          const stateVector = safeBase64Decode(doc.yjs_state);
-          if (stateVector) {
-            Y.applyUpdate(this.doc, stateVector);
-          }
-        }
-      } catch {
-        // Non-critical — will retry on next interval
-      }
-    }, intervalMs);
+  startPolling(_intervalMs: number = 15_000): void {
+    // No-op — polling removed to prevent merge-induced duplication.
+    // Real-time provider handles sync; initial load handles cold start.
   }
 
   /**

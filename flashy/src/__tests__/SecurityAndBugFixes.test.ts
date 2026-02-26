@@ -69,14 +69,14 @@ describe('DocumentPersistence — Event Emitter & Retry Logic', () => {
   describe('Save-status events', () => {
     it('should emit "saving" when save starts', async () => {
       const doc = new Y.Doc();
+      doc.getText('content').insert(0, 'test content');
       const persistence = new DocumentPersistence(doc, 'test-room');
       const handler = jest.fn();
       persistence.on('save-status', handler);
 
-      // Mock successful load + save
+      // saveNow no longer calls get_document — just upsert_document_rpc
       (supabase.rpc as jest.Mock)
-        .mockResolvedValueOnce({ data: [], error: null }) // get_document in saveNow
-        .mockResolvedValueOnce({ data: { message: 'ok' }, error: null }); // upsert_document_rpc
+        .mockResolvedValueOnce({ data: { message: 'ok' }, error: null });
 
       const savePromise = persistence.saveNow();
       // The saving event is emitted synchronously at the start of saveNow
@@ -92,12 +92,12 @@ describe('DocumentPersistence — Event Emitter & Retry Logic', () => {
 
     it('should emit "saved" on successful save', async () => {
       const doc = new Y.Doc();
+      doc.getText('content').insert(0, 'test content');
       const persistence = new DocumentPersistence(doc, 'test-room');
       const handler = jest.fn();
       persistence.on('save-status', handler);
 
       (supabase.rpc as jest.Mock)
-        .mockResolvedValueOnce({ data: [], error: null })
         .mockResolvedValueOnce({ data: { message: 'saved' }, error: null });
 
       await persistence.saveNow();
@@ -112,12 +112,12 @@ describe('DocumentPersistence — Event Emitter & Retry Logic', () => {
 
     it('should emit "error" on save failure', async () => {
       const doc = new Y.Doc();
+      doc.getText('content').insert(0, 'test content');
       const persistence = new DocumentPersistence(doc, 'test-room');
       const handler = jest.fn();
       persistence.on('save-status', handler);
 
       (supabase.rpc as jest.Mock)
-        .mockResolvedValueOnce({ data: [], error: null })
         .mockResolvedValueOnce({ data: null, error: { message: 'DB down' } });
 
       await persistence.saveNow();
@@ -133,13 +133,13 @@ describe('DocumentPersistence — Event Emitter & Retry Logic', () => {
   describe('Retry with exponential backoff', () => {
     it('should schedule retry after save failure', async () => {
       const doc = new Y.Doc();
+      doc.getText('content').insert(0, 'test content');
       const persistence = new DocumentPersistence(doc, 'test-room');
       const handler = jest.fn();
       persistence.on('save-status', handler);
 
       // First save fails
       (supabase.rpc as jest.Mock)
-        .mockResolvedValueOnce({ data: [], error: null })
         .mockResolvedValueOnce({ data: null, error: { message: 'fail' } });
 
       await persistence.saveNow();
@@ -151,7 +151,6 @@ describe('DocumentPersistence — Event Emitter & Retry Logic', () => {
       // A retry timer should be pending — advance timers to trigger it
       // The first retry delay is INITIAL_RETRY_DELAY (2000ms)
       (supabase.rpc as jest.Mock)
-        .mockResolvedValueOnce({ data: [], error: null })
         .mockResolvedValueOnce({ data: { message: 'saved' }, error: null });
 
       // Advance past the retry delay
@@ -166,18 +165,17 @@ describe('DocumentPersistence — Event Emitter & Retry Logic', () => {
 
     it('should use exponential backoff for successive failures', async () => {
       const doc = new Y.Doc();
+      doc.getText('content').insert(0, 'test content');
       const persistence = new DocumentPersistence(doc, 'test-room');
 
-      // Fail first save
+      // Fail first save (saveNow no longer calls get_document, just upsert)
       (supabase.rpc as jest.Mock)
-        .mockResolvedValueOnce({ data: [], error: null })
         .mockResolvedValueOnce({ data: null, error: { message: 'fail' } });
 
       await persistence.saveNow();
 
       // First retry at ~2000ms — but set up next failure too
       (supabase.rpc as jest.Mock)
-        .mockResolvedValueOnce({ data: [], error: null })
         .mockResolvedValueOnce({ data: null, error: { message: 'fail again' } });
 
       jest.advanceTimersByTime(2500);
@@ -187,7 +185,6 @@ describe('DocumentPersistence — Event Emitter & Retry Logic', () => {
 
       // Second retry should be at ~4000ms (2 * 2000)
       (supabase.rpc as jest.Mock)
-        .mockResolvedValueOnce({ data: [], error: null })
         .mockResolvedValueOnce({ data: { message: 'saved' }, error: null });
 
       // Advancing only 2500 should NOT trigger the second retry yet
@@ -204,11 +201,11 @@ describe('DocumentPersistence — Event Emitter & Retry Logic', () => {
   describe('scheduleSave cancels pending retry', () => {
     it('should cancel pending retry when scheduleSave is called', async () => {
       const doc = new Y.Doc();
+      doc.getText('content').insert(0, 'test content');
       const persistence = new DocumentPersistence(doc, 'test-room');
 
       // Fail first save to schedule a retry
       (supabase.rpc as jest.Mock)
-        .mockResolvedValueOnce({ data: [], error: null })
         .mockResolvedValueOnce({ data: null, error: { message: 'fail' } });
 
       await persistence.saveNow();
@@ -218,7 +215,6 @@ describe('DocumentPersistence — Event Emitter & Retry Logic', () => {
 
       // Set up a successful save for the scheduled one
       (supabase.rpc as jest.Mock)
-        .mockResolvedValueOnce({ data: [], error: null })
         .mockResolvedValueOnce({ data: { message: 'saved' }, error: null });
 
       // The original retry at 2000ms should have been cancelled
@@ -235,11 +231,11 @@ describe('DocumentPersistence — Event Emitter & Retry Logic', () => {
   describe('destroy() cleans up retry timer', () => {
     it('should clean up retry timer on destroy', async () => {
       const doc = new Y.Doc();
+      doc.getText('content').insert(0, 'test content');
       const persistence = new DocumentPersistence(doc, 'test-room');
 
       // Fail to schedule a retry
       (supabase.rpc as jest.Mock)
-        .mockResolvedValueOnce({ data: [], error: null })
         .mockResolvedValueOnce({ data: null, error: { message: 'fail' } });
 
       await persistence.saveNow();
