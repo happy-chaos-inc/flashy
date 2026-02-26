@@ -205,6 +205,35 @@
   color: #1f2937;
   line-height: 1.5;
   word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.tutor-question-detail {
+  margin-top: 16px;
+  font-size: 18px;
+  font-weight: 400;
+  color: #374151;
+  line-height: 1.6;
+  text-align: left;
+  overflow-wrap: break-word;
+}
+
+.tutor-question-detail p {
+  margin: 0;
+}
+
+.tutor-question-detail p:not(:last-child) {
+  margin-bottom: 8px;
+}
+
+.tutor-question-detail ul,
+.tutor-question-detail ol {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+
+.tutor-question-detail li {
+  margin: 4px 0;
 }
 
 /* ===================== */
@@ -333,13 +362,13 @@
 /* ===================== */
 .tutor-feedback {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 0;
   width: 100%;
   max-width: 700px;
-  padding: 16px 20px;
   border-radius: 12px;
   animation: feedbackSlideUp 0.3s ease-out;
+  overflow: hidden;
 }
 
 @keyframes feedbackSlideUp {
@@ -351,6 +380,13 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.tutor-feedback-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
 }
 
 .tutor-feedback.correct {
@@ -387,14 +423,48 @@
 .tutor-feedback-title {
   font-weight: 600;
   font-size: 15px;
-  margin-bottom: 2px;
 }
 
-.tutor-feedback-explanation {
-  font-size: 13px;
-  opacity: 0.85;
-  line-height: 1.4;
-  word-wrap: break-word;
+.tutor-correct-answer {
+  background: #fff5f5;
+  border-top: 1px solid #fecaca;
+  padding: 16px 20px;
+}
+
+.tutor-correct-answer-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #ef4444;
+  margin-bottom: 6px;
+}
+
+.tutor-correct-answer-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+
+.tutor-correct-answer-text p {
+  margin: 0;
+}
+
+.tutor-correct-answer-text p:not(:last-child) {
+  margin-bottom: 6px;
+}
+
+.tutor-correct-answer-text ul,
+.tutor-correct-answer-text ol {
+  padding-left: 20px;
+  margin: 6px 0;
+  font-weight: 400;
+}
+
+.tutor-correct-answer-text li {
+  margin: 3px 0;
 }
 
 .tutor-next-button {

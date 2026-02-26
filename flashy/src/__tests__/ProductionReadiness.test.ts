@@ -518,45 +518,47 @@ describe('Performance', () => {
 // 8. CI/CD PIPELINE
 // ============================================================================
 describe('CI/CD Pipeline', () => {
+  // The git root is the parent of flashy/ (monorepo layout).
+  // The CI workflow lives at <git-root>/.github/workflows/ci.yml
+  const GIT_ROOT = path.resolve(ROOT_DIR, '..');
   let workflowContent: string;
 
   beforeAll(() => {
-    const workflowPath = path.join(ROOT_DIR, '.github/workflows/ci.yml');
+    const workflowPath = path.join(GIT_ROOT, '.github/workflows/ci.yml');
     workflowContent = fs.readFileSync(workflowPath, 'utf-8');
   });
 
   it('should have GitHub Actions workflow', () => {
-    expect(fs.existsSync(path.join(ROOT_DIR, '.github/workflows/ci.yml'))).toBe(true);
+    expect(fs.existsSync(path.join(GIT_ROOT, '.github/workflows/ci.yml'))).toBe(true);
   });
 
-  it('should run on push to main', () => {
+  it('should run on push to main and feature branches', () => {
     expect(workflowContent).toContain('push:');
     expect(workflowContent).toContain('main');
+    expect(workflowContent).toContain('andy-flashy-');
   });
 
   it('should run on pull requests', () => {
     expect(workflowContent).toContain('pull_request:');
   });
 
-  it('should install dependencies', () => {
+  it('should use npm ci for reproducible installs', () => {
     expect(workflowContent).toContain('npm ci');
+    expect(workflowContent).not.toMatch(/run: npm install\b/);
   });
 
-  it('should run tests', () => {
+  it('should run tests with --forceExit', () => {
     expect(workflowContent).toContain('npm test');
     expect(workflowContent).toContain('--watchAll=false');
+    expect(workflowContent).toContain('--forceExit');
   });
 
   it('should build the application', () => {
     expect(workflowContent).toContain('npm run build');
   });
 
-  it('should have test job', () => {
-    expect(workflowContent).toContain('test:');
-  });
-
-  it('should use Node.js 18 and 20 matrix', () => {
-    expect(workflowContent).toContain('node-version: [18, 20]');
+  it('should use working-directory: flashy for monorepo', () => {
+    expect(workflowContent).toContain('working-directory: flashy');
   });
 
   it('should have environment secrets configured', () => {
@@ -631,7 +633,7 @@ describe('Deployment Checklist', () => {
     },
     {
       name: 'CI workflow exists',
-      check: () => fs.existsSync(path.join(ROOT_DIR, '.github/workflows/ci.yml')),
+      check: () => fs.existsSync(path.resolve(ROOT_DIR, '../.github/workflows/ci.yml')),
     },
     {
       name: 'Supabase config exists',

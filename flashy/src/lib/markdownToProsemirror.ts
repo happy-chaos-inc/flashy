@@ -8,7 +8,8 @@ import * as Y from 'yjs';
  * before children are added, to avoid Yjs "Invalid access" warnings.
  */
 export function markdownToProsemirror(markdown: string, fragment: Y.XmlFragment): void {
-  const lines = markdown.split('\n');
+  // Normalize line endings — pasted content may have \r\n (Windows) or \r (old Mac)
+  const lines = markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
 
   let i = 0;
   while (i < lines.length) {

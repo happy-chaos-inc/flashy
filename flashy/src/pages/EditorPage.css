@@ -241,6 +241,7 @@
   /* Standard scrollbar styling (Firefox, modern browsers) */
   scrollbar-width: thin;
   scrollbar-color: #B399D4 #f0f0f0;
+  scrollbar-gutter: stable;
   position: fixed;
   top: var(--content-start);
   left: var(--margin-left);
@@ -333,6 +334,101 @@
   font-size: 14px;
   color: #9ca3af;
   font-weight: 500;
+}
+
+/* Tutor button group (split button) */
+.tutor-button-group {
+  position: relative;
+  display: flex;
+  flex: 1;
+}
+
+.tutor-button-group .tutor-button {
+  border-radius: 12px 0 0 12px;
+  flex: 1;
+}
+
+.tutor-config-button {
+  width: 38px;
+  padding: 0;
+  background: linear-gradient(135deg, #a88bc4, #8B6BB8);
+  color: rgba(255, 255, 255, 0.7);
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0 12px 12px 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.tutor-config-button:hover {
+  background: linear-gradient(135deg, #9b7ec4, #7a5da8);
+  color: white;
+}
+
+.tutor-config-button.active {
+  background: #7a5da8;
+  color: white;
+}
+
+/* Sidebar menu dropdown */
+.sidebar-menu-dropdown {
+  width: 280px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 16px;
+  z-index: 500;
+  animation: menuDropdownIn 0.15s ease-out;
+}
+
+@keyframes menuDropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sidebar-menu-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.tutor-instructions-textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 10px 12px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #1f2937;
+  background: #f9fafb;
+  resize: vertical;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.tutor-instructions-textarea:focus {
+  outline: none;
+  border-color: #B399D4;
+  box-shadow: 0 0 0 3px rgba(179, 153, 212, 0.15);
+  background: white;
+}
+
+.tutor-instructions-textarea::placeholder {
+  color: #9ca3af;
+  line-height: 1.5;
 }
 
 .flashcard-sidebar h3 {
@@ -498,7 +594,7 @@
 
 .flashcard-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
   gap: 12px;
   padding: 0 24px 12px 24px;
   transition: all 0.3s ease;
@@ -623,6 +719,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  overflow: hidden;
 }
 
 .flashcard.starred {
@@ -718,6 +815,9 @@
   font-weight: 600;
   line-height: 1.4;
   flex: 1;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
 }
 
 .flashcard-definition {
@@ -725,6 +825,10 @@
   font-size: 14px;
   line-height: 1.6;
   margin-top: 8px;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .flashcard-definition ul,
@@ -843,6 +947,7 @@
   cursor: pointer;
   transform-style: preserve-3d;
   position: relative;
+  container-type: inline-size;
 }
 
 .sidebar-preview-card-front,
@@ -913,15 +1018,19 @@
 }
 
 .sidebar-preview-card .card-content {
-  font-size: 20px;
+  font-size: clamp(14px, 5cqi, 20px);
   padding: 8px 20px 80px 20px;
   text-align: center;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .sidebar-preview-card .card-content-markdown {
-  font-size: 12px;
+  font-size: clamp(10px, 3.5cqi, 12px);
   padding: 8px 20px 15% 20px;
   text-align: left;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .sidebar-preview-card .card-content-markdown ul,

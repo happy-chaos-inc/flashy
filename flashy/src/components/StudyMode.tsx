@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Star, X } from 'lucide-react';
 import './StudyMode.css';
@@ -13,25 +13,18 @@ interface Flashcard {
 interface StudyModeProps {
   flashcards: Flashcard[];
   starredCards: Set<string>;
+  onToggleStar: (cardId: string, event: React.MouseEvent) => void;
   onClose: () => void;
 }
 
-export function StudyMode({ flashcards, starredCards, onClose }: StudyModeProps) {
+export function StudyMode({ flashcards, starredCards, onToggleStar, onClose }: StudyModeProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null);
-  const [starredOnly, setStarredOnly] = useState(false);
 
-  // Filter flashcards based on starred-only mode
-  const filteredCards = useMemo(() => {
-    if (starredOnly) {
-      return flashcards.filter(card => starredCards.has(card.id));
-    }
-    return flashcards;
-  }, [flashcards, starredCards, starredOnly]);
-
-  const currentCard = filteredCards[currentIndex];
+  const currentCard = flashcards[currentIndex];
+  const isStarred = currentCard ? starredCards.has(currentCard.id) : false;
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -41,7 +34,7 @@ export function StudyMode({ flashcards, starredCards, onClose }: StudyModeProps)
   }, [onClose]);
 
   const nextCard = useCallback(() => {
-    if (currentIndex < filteredCards.length - 1) {
+    if (currentIndex < flashcards.length - 1) {
       setIsFlipped(false);
       setSlideDirection('left');
       setTimeout(() => {
@@ -49,7 +42,7 @@ export function StudyMode({ flashcards, starredCards, onClose }: StudyModeProps)
         setSlideDirection(null);
       }, 300);
     }
-  }, [currentIndex, filteredCards.length]);
+  }, [currentIndex, flashcards.length]);
 
   const prevCard = useCallback(() => {
     if (currentIndex > 0) {
@@ -61,13 +54,6 @@ export function StudyMode({ flashcards, starredCards, onClose }: StudyModeProps)
       }, 300);
     }
   }, [currentIndex]);
-
-  // Reset to first card when toggling starred-only mode
-  const toggleStarredOnly = () => {
-    setStarredOnly(!starredOnly);
-    setCurrentIndex(0);
-    setIsFlipped(false);
-  };
 
   const toggleFlip = useCallback(() => {
     setIsFlipped(!isFlipped);
@@ -98,17 +84,15 @@ export function StudyMode({ flashcards, starredCards, onClose }: StudyModeProps)
     <div className={`study-mode-panel ${isClosing ? 'closing' : ''}`}>
       <div className="study-mode-header">
         <div className="study-progress">
-          {currentIndex + 1} / {filteredCards.length}
-          {starredOnly && <span className="starred-badge"> ★ Starred</span>}
+          {currentIndex + 1} / {flashcards.length}
         </div>
         <div className="header-controls">
           <button
-            className={`starred-filter-button ${starredOnly ? 'active' : ''}`}
-            onClick={toggleStarredOnly}
-            title="Study starred only"
-            disabled={starredCards.size === 0}
+            className={`study-star-button ${isStarred ? 'starred' : ''}`}
+            onClick={(e) => { e.stopPropagation(); onToggleStar(currentCard.id, e); }}
+            title={isStarred ? 'Unstar' : 'Star'}
           >
-            <Star size={20} fill={starredOnly ? 'currentColor' : 'none'} />
+            <Star size={20} fill={isStarred ? 'currentColor' : 'none'} />
           </button>
           <button
             className="close-button"

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Star, ChevronLeft, ChevronDown, ChevronUp, Play, Edit2, GraduationCap, Gamepad2 } from 'lucide-react';
+import { Star, ChevronLeft, ChevronDown, ChevronUp, Play, Edit2, GraduationCap, Gamepad2, ScrollText } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 export interface Flashcard {
@@ -18,6 +18,8 @@ interface FlashcardSidebarProps {
   onStartTutor: (cardIds?: string[]) => void;
   onStartGames?: (cardIds?: string[]) => void;
   isAnimating?: boolean;
+  tutorInstructions?: string;
+  onTutorInstructionsChange?: (value: string) => void;
 }
 
 export function FlashcardSidebar({
@@ -28,6 +30,8 @@ export function FlashcardSidebar({
   onStartTutor,
   onStartGames,
   isAnimating = false,
+  tutorInstructions = '',
+  onTutorInstructionsChange,
 }: FlashcardSidebarProps) {
   // Internal state for sidebar UI
   const [previewCardIds, setPreviewCardIds] = useState<Set<string>>(new Set());
@@ -35,7 +39,22 @@ export function FlashcardSidebar({
   const [showOnlyStarred, setShowOnlyStarred] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [selectedSections, setSelectedSections] = useState<Set<string>>(new Set());
+  const [showMenu, setShowMenu] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const configBtnRef = useRef<HTMLButtonElement>(null);
   const hasInitializedSections = useRef(false);
+
+  // Close menu dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    if (showMenu) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMenu]);
 
   // Collapse all sections by default on first load
   useEffect(() => {
@@ -136,14 +155,45 @@ export function FlashcardSidebar({
               <Play size={20} fill="currentColor" />
               Learn{selectedSections.size > 0 ? ` (${selectedSections.size})` : ''}
             </button>
-            <button
-              className="study-button tutor-button"
-              onClick={() => onStartTutor(getSelectedCardIds())}
-              title={selectedSections.size > 0 ? `Quiz on ${selectedSections.size} selected section(s)` : "Quiz on all cards"}
-            >
-              <GraduationCap size={20} />
-              Tutor
-            </button>
+            <div ref={menuRef} className="tutor-button-group">
+              <button
+                className="study-button tutor-button"
+                onClick={() => onStartTutor(getSelectedCardIds())}
+                title={selectedSections.size > 0 ? `Quiz on ${selectedSections.size} selected section(s)` : "Quiz on all cards"}
+              >
+                <GraduationCap size={20} />
+                Tutor
+              </button>
+              <button
+                ref={configBtnRef}
+                className={`tutor-config-button ${showMenu ? 'active' : ''}`}
+                onClick={() => {
+                  if (!showMenu && configBtnRef.current) {
+                    const rect = configBtnRef.current.getBoundingClientRect();
+                    setMenuPos({ top: rect.bottom + 8, left: rect.right - 280 });
+                  }
+                  setShowMenu(!showMenu);
+                }}
+                title="Sample questions for tutor"
+              >
+                <ScrollText size={14} />
+              </button>
+              {showMenu && menuPos && (
+                <div
+                  className="sidebar-menu-dropdown"
+                  style={{ position: 'fixed', top: menuPos.top, left: menuPos.left }}
+                >
+                  <label className="sidebar-menu-label">Sample Questions for Tutor</label>
+                  <textarea
+                    className="tutor-instructions-textarea"
+                    value={tutorInstructions}
+                    onChange={(e) => onTutorInstructionsChange?.(e.target.value)}
+                    placeholder={"Add sample questions to guide the tutor...\n\nExamples:\n- Compare and contrast X and Y\n- Give a real-world example of...\n- What are the 3 key principles of..."}
+                    rows={6}
+                  />
+                </div>
+              )}
+            </div>
             {onStartGames && (
               <button className="toolbar-icon-button" onClick={() => onStartGames(getSelectedCardIds())} title="Learning games">
                 <Gamepad2 size={20} />

@@ -847,6 +847,106 @@ describe('Editor & WYSIWYG — Empty & Edge-Case Documents', () => {
   });
 });
 
+describe('Editor & WYSIWYG — Windows Line Endings (\\r\\n) Handling', () => {
+  it('should parse flashcards correctly from content with Windows \\r\\n line endings', () => {
+    // This is the exact bug a user reported: copy-pasted content from Windows
+    // had \\r\\n line endings which broke the ^##\\s+(.+)$ regex in parseFlashcards
+    const windowsContent = '# Biology\r\n## Mitosis\r\nCell division\r\n## Meiosis\r\nGamete production';
+    const normalized = windowsContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const cards = parseFlashcards(normalized);
+
+    expect(cards).toHaveLength(2);
+    expect(cards[0].term).toBe('Mitosis');
+    expect(cards[1].term).toBe('Meiosis');
+  });
+
+  it('should fail to parse flashcards WITHOUT normalization (documents the bug)', () => {
+    // Without \\r\\n normalization, the regex ^##\\s+(.+)$ fails because
+    // \\r sits between the text and \\n, so $ doesn't match at the right position
+    const windowsContent = '# Biology\r\n## Mitosis\r\nCell division\r\n## Meiosis\r\nGamete production';
+    const lines = windowsContent.split('\n'); // Split on \\n only — \\r stays in the line
+    const cards: { term: string }[] = [];
+    for (const line of lines) {
+      const match = line.match(/^##\s+(.+)$/);
+      if (match) cards.push({ term: match[1].trim() });
+    }
+    // BUG: \\r at end of line means $ anchor fails — the regex matches 0 cards
+    // This is exactly what users saw: "0 cards" in the sidebar
+    expect(cards.length).toBe(0);
+  });
+
+  it('should strip \\r from Y.XmlText content in prosemirrorToMarkdown', () => {
+    const doc = new Y.Doc();
+    const fragment = doc.getXmlFragment('prosemirror');
+
+    // Simulate pasted content with \\r embedded in Y.XmlText nodes
+    const h = new Y.XmlElement('heading');
+    h.setAttribute('level', 2);
+    h.push([new Y.XmlText('Term with CR\r')]);
+    const p = new Y.XmlElement('paragraph');
+    p.push([new Y.XmlText('Definition with CR\r')]);
+    fragment.push([h, p]);
+
+    const md = prosemirrorToMarkdown(fragment);
+
+    // \\r should be stripped
+    expect(md).not.toContain('\r');
+    expect(md).toContain('## Term with CR');
+    expect(md).toContain('Definition with CR');
+
+    doc.destroy();
+  });
+
+  it('should normalize \\r\\n in markdownToProsemirror input', () => {
+    const doc = new Y.Doc();
+    const fragment = doc.getXmlFragment('prosemirror');
+
+    const windowsMarkdown = '# Title\r\n## Term\r\nDefinition\r\n';
+    markdownToProsemirror(windowsMarkdown, fragment);
+    const md = prosemirrorToMarkdown(fragment);
+
+    expect(md).not.toContain('\r');
+    expect(md).toContain('# Title');
+    expect(md).toContain('## Term');
+    expect(md).toContain('Definition');
+
+    doc.destroy();
+  });
+
+  it('should handle old Mac \\r-only line endings', () => {
+    const doc = new Y.Doc();
+    const fragment = doc.getXmlFragment('prosemirror');
+
+    const oldMacMarkdown = '# Title\r## Term\rDefinition';
+    markdownToProsemirror(oldMacMarkdown, fragment);
+    const md = prosemirrorToMarkdown(fragment);
+
+    expect(md).not.toContain('\r');
+    expect(md).toContain('# Title');
+    expect(md).toContain('## Term');
+
+    doc.destroy();
+  });
+
+  it('should produce valid flashcards from CRDT round-trip with Windows line endings', () => {
+    const doc = new Y.Doc();
+    const fragment = doc.getXmlFragment('prosemirror');
+
+    // Simulate the full pipeline: Windows content → CRDT → markdown → flashcards
+    const windowsInput = '# Chemistry\r\n## Ionic Bond\r\nTransfer of electrons\r\n## Covalent Bond\r\nSharing of electrons';
+    markdownToProsemirror(windowsInput, fragment);
+    const renderedMd = prosemirrorToMarkdown(fragment);
+    const cards = parseFlashcards(renderedMd);
+
+    expect(cards).toHaveLength(2);
+    expect(cards[0].term).toBe('Ionic Bond');
+    expect(cards[0].definition).toContain('Transfer of electrons');
+    expect(cards[1].term).toBe('Covalent Bond');
+
+    doc.destroy();
+  });
+});
+
 describe('Editor & WYSIWYG — CRDT Structural Integrity Under Stress', () => {
   it('should handle 50 concurrent flashcard insertions from different peers', () => {
     const docs = Array.from({ length: 5 }, () => new Y.Doc());

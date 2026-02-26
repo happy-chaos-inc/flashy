@@ -44,6 +44,7 @@ import './MarkdownEditor.css';
 interface MarkdownEditorProps {
   scrollTarget?: { position: number; timestamp: number } | null;
   isActive?: boolean; // Whether this editor is currently visible
+  roomId?: string;
 }
 
 /**
@@ -56,7 +57,7 @@ interface MarkdownEditorProps {
  * - Edit: Parse markdown → update Y.XmlFragment
  * - Loop prevention: Synchronous flag (isRemoteUpdate)
  */
-export function MarkdownEditor({ scrollTarget, isActive = true }: MarkdownEditorProps) {
+export function MarkdownEditor({ scrollTarget, isActive = true, roomId }: MarkdownEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [isReady, setIsReady] = useState(false);
@@ -509,9 +510,7 @@ export function MarkdownEditor({ scrollTarget, isActive = true }: MarkdownEditor
       <div className={`breadcrumb ${headerHidden ? 'hidden' : ''}`}>
         <span className="breadcrumb-item">Home</span>
         <span className="breadcrumb-separator">/</span>
-        <span className="breadcrumb-item">happy-chaos</span>
-        <span className="breadcrumb-separator">/</span>
-        <span className="breadcrumb-item breadcrumb-current">untitled.md</span>
+        <span className="breadcrumb-item breadcrumb-current">{roomId ? `${roomId}.md` : 'untitled.md'}</span>
       </div>
       <div ref={editorRef} className="markdown-editor" />
     </div>

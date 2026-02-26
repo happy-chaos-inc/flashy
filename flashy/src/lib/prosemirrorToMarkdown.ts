@@ -140,7 +140,8 @@ export function prosemirrorToMarkdown(fragment: Y.XmlFragment): string {
     let result = '';
     node.forEach((child) => {
       if (child instanceof Y.XmlText) {
-        result += child.toString();
+        // Strip \r — pasted content from Windows may embed carriage returns in Y.XmlText nodes
+        result += child.toString().replace(/\r/g, '');
       } else if (child instanceof Y.XmlElement) {
         result += extractText(child);
       }

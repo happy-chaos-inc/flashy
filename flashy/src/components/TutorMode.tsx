@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { X, Trophy, Flame, ArrowRight, CheckCircle, XCircle, Target, Loader2, RotateCcw } from 'lucide-react';
 import { supabase } from '../config/supabase';
 import { Flashcard } from './FlashcardSidebar';
@@ -8,6 +9,7 @@ interface TutorQuestion {
   id: string;
   type: 'define' | 'identify' | 'truefalse' | 'fillin';
   question: string;
+  detail?: string; // Rich markdown content shown below the question prompt
   correctAnswer: string;
   flashcardId: string;
   section?: string;
@@ -33,6 +35,7 @@ interface TutorModeProps {
   flashcards: Flashcard[];
   onClose: () => void;
   roomId: string;
+  tutorInstructions?: string;
 }
 
 // Best score storage
@@ -105,14 +108,11 @@ function generateQuestions(flashcards: Flashcard[]): TutorQuestion[] {
         break;
 
       case 'identify':
-        // Truncate long definitions for the question display
-        const snippet = card.definition.length > 120
-          ? card.definition.substring(0, 120) + '...'
-          : card.definition;
         questions.push({
           id: `q-${idx}-identify`,
           type: 'identify',
-          question: `Which term is described by: "${snippet}"`,
+          question: 'Which term is described by:',
+          detail: card.definition,
           correctAnswer: card.term,
           flashcardId: card.id,
           section: card.section,
@@ -124,13 +124,11 @@ function generateQuestions(flashcards: Flashcard[]): TutorQuestion[] {
         const shownDef = isTrue
           ? card.definition
           : pickWrongDefinition(flashcards, card.id);
-        const truncatedDef = shownDef.length > 100
-          ? shownDef.substring(0, 100) + '...'
-          : shownDef;
         questions.push({
           id: `q-${idx}-tf`,
           type: 'truefalse',
-          question: `True or False: "${card.term}" means "${truncatedDef}"`,
+          question: `True or False: "${card.term}" means:`,
+          detail: shownDef,
           correctAnswer: isTrue ? 'True' : 'False',
           flashcardId: card.id,
           section: card.section,
@@ -144,7 +142,8 @@ function generateQuestions(flashcards: Flashcard[]): TutorQuestion[] {
           questions.push({
             id: `q-${idx}-fillin`,
             type: 'fillin',
-            question: `Fill in the blank for "${card.term}": ${result.blanked}`,
+            question: `Fill in the blank for "${card.term}":`,
+            detail: result.blanked,
             correctAnswer: result.answer,
             flashcardId: card.id,
             section: card.section,
@@ -195,7 +194,7 @@ function getMissMessage(): string {
   return MISS_MESSAGES[Math.floor(Math.random() * MISS_MESSAGES.length)];
 }
 
-export function TutorMode({ flashcards, onClose, roomId }: TutorModeProps) {
+export function TutorMode({ flashcards, onClose, roomId, tutorInstructions }: TutorModeProps) {
   const [questions, setQuestions] = useState<TutorQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
@@ -279,11 +278,14 @@ export function TutorMode({ flashcards, onClose, roomId }: TutorModeProps) {
       }
 
       // Use AI to evaluate
+      const instructionsContext = tutorInstructions?.trim()
+        ? `\n\nThe instructor has provided these sample question styles:\n${tutorInstructions}\n\nGrade the student's answer with these question styles in mind.`
+        : '';
       const systemPrompt = `You are evaluating a student's answer to a flashcard question. Be lenient - accept answers that capture the key concept even if not word-for-word. For "identify" type questions, accept reasonable variations of the term name.
 
 The question type is: ${currentQuestion.type}
 The correct answer is: ${currentQuestion.correctAnswer}
-The student answered: ${userAnswer}
+The student answered: ${userAnswer}${instructionsContext}
 
 Respond with ONLY valid JSON (no markdown, no code blocks): {"correct": true/false, "explanation": "brief 1-sentence explanation"}`;
 
@@ -557,6 +559,11 @@ Respond with ONLY valid JSON (no markdown, no code blocks): {"correct": true/fal
             <div className="tutor-question-section">{currentQuestion.section}</div>
           )}
           <div className="tutor-question-text">{currentQuestion?.question}</div>
+          {currentQuestion?.detail && (
+            <div className="tutor-question-detail">
+              <ReactMarkdown>{currentQuestion.detail}</ReactMarkdown>
+            </div>
+          )}
         </div>
       </div>
 
@@ -639,19 +646,28 @@ Respond with ONLY valid JSON (no markdown, no code blocks): {"correct": true/fal
         {/* Feedback */}
         {feedback && (
           <div className={`tutor-feedback ${feedback.correct ? 'correct' : 'wrong'}`}>
-            <div className="tutor-feedback-icon">
-              {feedback.correct ? <CheckCircle size={24} /> : <XCircle size={24} />}
-            </div>
-            <div className="tutor-feedback-content">
-              <div className="tutor-feedback-title">
-                {feedback.correct ? getEncouragingMessage() : getMissMessage()}
+            <div className="tutor-feedback-row">
+              <div className="tutor-feedback-icon">
+                {feedback.correct ? <CheckCircle size={24} /> : <XCircle size={24} />}
               </div>
-              <div className="tutor-feedback-explanation">{feedback.explanation}</div>
+              <div className="tutor-feedback-content">
+                <div className="tutor-feedback-title">
+                  {feedback.correct ? getEncouragingMessage() : getMissMessage()}
+                </div>
+              </div>
+              <button className="tutor-next-button" onClick={goToNext}>
+                {currentIndex >= questions.length - 1 ? 'View Results' : 'Next'}
+                <ArrowRight size={16} />
+              </button>
             </div>
-            <button className="tutor-next-button" onClick={goToNext}>
-              {currentIndex >= questions.length - 1 ? 'View Results' : 'Next'}
-              <ArrowRight size={16} />
-            </button>
+            {!feedback.correct && currentQuestion && (
+              <div className="tutor-correct-answer">
+                <div className="tutor-correct-answer-label">Correct answer</div>
+                <div className="tutor-correct-answer-text">
+                  <ReactMarkdown>{currentQuestion.correctAnswer}</ReactMarkdown>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

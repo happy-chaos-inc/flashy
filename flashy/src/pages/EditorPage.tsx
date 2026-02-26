@@ -49,6 +49,9 @@ export function EditorPage({ roomId }: EditorPageProps) {
   const [showTutorMode, setShowTutorMode] = useState(false);
   const [showLearnGames, setShowLearnGames] = useState(false);
   const [activeCardIds, setActiveCardIds] = useState<string[] | null>(null);
+  const [tutorInstructions, setTutorInstructions] = useState(() =>
+    localStorage.getItem(`tutor_instructions_${roomId}`) || ''
+  );
   // Two-panel layout: left sidebar (flashcards), center (editor); chat is a floating widget
   const [leftSidebarWidth, setLeftSidebarWidth] = useState(MIN_PANEL_WIDTH);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
@@ -276,7 +279,8 @@ export function EditorPage({ roomId }: EditorPageProps) {
 
   // Parse flashcards from markdown content
   const parseFlashcards = (content: string): Flashcard[] => {
-    const lines = content.split('\n');
+    // Normalize line endings — pasted content may have \r\n (Windows) or \r (old Mac)
+    const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const cards: Flashcard[] = [];
     let currentSection = '';
 
@@ -328,6 +332,11 @@ export function EditorPage({ roomId }: EditorPageProps) {
     setStarredCards(newStarred);
     localStorage.setItem('starredCards', JSON.stringify(Array.from(newStarred)));
   };
+
+  // Persist tutor instructions to localStorage
+  useEffect(() => {
+    localStorage.setItem(`tutor_instructions_${roomId}`, tutorInstructions);
+  }, [tutorInstructions, roomId]);
 
   // Handle resizing for left sidebar (flashcards)
   const handleLeftMouseDown = (e: React.MouseEvent) => {
@@ -432,7 +441,13 @@ export function EditorPage({ roomId }: EditorPageProps) {
         };
 
         // Initial parse
-        const initialCards = parseFlashcards(getContent());
+        const initialContent = getContent();
+        const initialCards = parseFlashcards(initialContent);
+        if (initialContent.length > 0 && initialCards.length === 0) {
+          logger.warn('⚠️ Flashcard parsing: document has content but 0 cards detected.',
+            'Content length:', initialContent.length,
+            'First 200 chars:', JSON.stringify(initialContent.substring(0, 200)));
+        }
         setFlashcards(initialCards);
 
         // Listen for Y.XmlFragment changes (both modes)
@@ -614,6 +629,8 @@ export function EditorPage({ roomId }: EditorPageProps) {
           onStartTutor={(cardIds) => { setActiveCardIds(cardIds || null); setShowTutorMode(true); }}
           onStartGames={(cardIds) => { setActiveCardIds(cardIds || null); setShowLearnGames(true); }}
           isAnimating={isAnimatingLeft}
+          tutorInstructions={tutorInstructions}
+          onTutorInstructionsChange={setTutorInstructions}
         />
       )}
 
@@ -663,7 +680,7 @@ export function EditorPage({ roomId }: EditorPageProps) {
           <TiptapEditor scrollTarget={scrollTarget} isActive={editorMode === 'wysiwyg'} />
         </div>
         <div className={`editor-panel ${editorMode === 'markdown' ? 'active' : 'hidden'}`}>
-          <MarkdownEditor scrollTarget={scrollTarget} isActive={editorMode === 'markdown'} />
+          <MarkdownEditor scrollTarget={scrollTarget} isActive={editorMode === 'markdown'} roomId={roomId} />
         </div>
         <div className={`editor-panel ${editorMode === 'canvas' ? 'active' : 'hidden'}`}>
           <CollaborativeCanvas isActive={editorMode === 'canvas'} flashcards={flashcards} roomId={roomId} />
@@ -698,6 +715,7 @@ export function EditorPage({ roomId }: EditorPageProps) {
         <StudyMode
           flashcards={activeCardIds ? flashcards.filter(c => activeCardIds.includes(c.id)) : flashcards}
           starredCards={starredCards}
+          onToggleStar={toggleStar}
           onClose={() => { setShowStudyMode(false); setActiveCardIds(null); }}
         />
       )}
@@ -707,6 +725,7 @@ export function EditorPage({ roomId }: EditorPageProps) {
           flashcards={activeCardIds ? flashcards.filter(c => activeCardIds.includes(c.id)) : flashcards}
           onClose={() => { setShowTutorMode(false); setActiveCardIds(null); }}
           roomId={roomId}
+          tutorInstructions={tutorInstructions}
         />
       )}
 
