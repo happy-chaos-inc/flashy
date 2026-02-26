@@ -1,12 +1,14 @@
-name: Branch Ready for Deploy
+name: CI
 
 on:
   push:
-    branches: [ andy-flashy-* ]
+    branches: [main, andy-flashy-*]
+  pull_request:
+    branches: [main]
 
 jobs:
-  test-with-prod-credentials:
-    name: Test Branch with Production Credentials
+  test-and-build:
+    name: Test & Build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -24,10 +26,10 @@ jobs:
         cache-dependency-path: flashy/package-lock.json
 
     - name: Install dependencies
-      run: npm install
+      run: npm ci
 
-    - name: Run all tests (with production env)
-      run: npm test -- --coverage --watchAll=false
+    - name: Run tests
+      run: npm test -- --coverage --watchAll=false --forceExit
       env:
         CI: true
         REACT_APP_SUPABASE_URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
@@ -40,9 +42,6 @@ jobs:
         REACT_APP_SUPABASE_URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
         REACT_APP_SUPABASE_ANON_KEY: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
 
-    - name: ✅ Branch is ready for npm run deploy
+    - name: Summary
       run: |
-        echo "::notice::✅ All tests passed! Branch andy-flashy-v0.2.0 is ready for 'npm run deploy'"
-        echo "Production credentials validated ✓"
-        echo "Build successful ✓"
-        echo "CRDT tests passed ✓"
+        echo "::notice::Tests passed, build successful. Ready for deploy."
