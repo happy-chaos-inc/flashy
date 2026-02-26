@@ -315,14 +315,19 @@ class CollaborationManager {
     }
   }
 
-  private async loadFromDatabase(): Promise<void> {
+  private async loadFromDatabase(retryCount = 0): Promise<void> {
     if (this.dbLoaded || !this.persistence || !this.ydoc) return;
+
+    const MAX_LOAD_RETRIES = 3;
+    const RETRY_DELAY = 2000;
 
     try {
       logger.log('🔄 Loading document from Supabase...');
 
       const loaded = await this.persistence.loadFromDatabase();
       this.dbLoaded = true;
+
+      const xmlFragment = this.ydoc.getXmlFragment('prosemirror');
 
       if (loaded) {
         const finalLength = this.ydoc.getText('content').length;
@@ -331,26 +336,46 @@ class CollaborationManager {
         logger.log('📝 No database content — starting fresh');
       }
 
+      // If doc is empty but this is NOT a brand-new room, retry —
+      // Supabase may have returned stale/empty data or the load raced
+      const isNewRoom = sessionStorage.getItem('flashy_new_room') === this.currentRoomId;
+      if (!isNewRoom && xmlFragment.length === 0 && retryCount < MAX_LOAD_RETRIES) {
+        logger.log(`⚠️ Document is empty for existing room — retrying in ${RETRY_DELAY}ms (attempt ${retryCount + 1}/${MAX_LOAD_RETRIES})`);
+        this.dbLoaded = false; // Allow retry
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        return this.loadFromDatabase(retryCount + 1);
+      }
+
       // Seed new rooms with a typing animation (only when created via "Create Room" button)
-      const xmlFragment = this.ydoc.getXmlFragment('prosemirror');
-      const newRoomFlag = sessionStorage.getItem('flashy_new_room');
-      if (newRoomFlag === this.currentRoomId && xmlFragment.length === 0) {
+      if (isNewRoom && xmlFragment.length === 0) {
         sessionStorage.removeItem('flashy_new_room');
         logger.log('📝 New room created - starting intro typewriter');
         this.introAborted = false;
         this.typeIntro(xmlFragment);
       }
 
-      // Enable auto-save after loading
-      this.persistence.enableAutoSave();
+      // Enable auto-save after loading — but ONLY if doc has content.
+      // An empty doc for an existing room should never overwrite server data.
+      if (isNewRoom || xmlFragment.length > 0) {
+        this.persistence.enableAutoSave();
+      } else {
+        logger.warn('⚠️ Document is empty for existing room after retries — auto-save disabled to prevent data loss');
+      }
 
       // Add save-on-close to prevent data loss
       this.addBeforeUnloadHandler();
     } catch (error) {
       logger.error('❌ Failed to load from database:', error);
-      // Doc is empty and DB load failed — don't auto-save or we'd
-      // overwrite good server data with an empty document.
-      logger.warn('⚠️ Database load failed — auto-save disabled to prevent data loss');
+
+      // Retry on failure
+      if (retryCount < MAX_LOAD_RETRIES) {
+        logger.log(`🔄 Retrying load in ${RETRY_DELAY}ms (attempt ${retryCount + 1}/${MAX_LOAD_RETRIES})`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        return this.loadFromDatabase(retryCount + 1);
+      }
+
+      // All retries exhausted — don't auto-save empty doc
+      logger.warn('⚠️ Database load failed after retries — auto-save disabled to prevent data loss');
     }
   }
 

@@ -54,87 +54,50 @@
       }(window.location))
     </script>
 
-    <!-- NUCLEAR cache clear on page load - runs ONCE per session -->
+    <!-- Stale code detection: fetch latest index.html from server, compare bundle hash -->
     <script>
       (async function() {
-        // Prevent infinite reload loops
-        const hasRefreshed = sessionStorage.getItem('flashy_refreshed');
-        if (hasRefreshed) {
-          console.log('✅ Already refreshed this session, skipping check');
-          return;
-        }
+        // Prevent infinite reload: allow max 1 reload within 10 seconds
+        var lastReload = parseInt(sessionStorage.getItem('flashy_last_reload') || '0');
+        if (Date.now() - lastReload < 10000) return;
 
         try {
-          console.log('🔍 Checking for stale code...');
+          // Fetch the CURRENT index.html this browser is rendering
+          // (This page — the HTML we're in right now — may itself be cached)
+          var thisHtml = document.documentElement.outerHTML;
+          var thisMatch = thisHtml.match(/main\.([a-f0-9]+)\.js/);
 
-          // Fetch fresh index.html
-          const response = await fetch('/?t=' + Date.now(), {
-            cache: 'no-store',
-            headers: { 'Cache-Control': 'no-cache' }
+          // Fetch fresh index.html from server (bypass all caches)
+          var response = await fetch(window.location.pathname + '?_=' + Date.now(), {
+            cache: 'no-store'
           });
-          const freshHtml = await response.text();
+          var serverHtml = await response.text();
+          var serverMatch = serverHtml.match(/main\.([a-f0-9]+)\.js/);
 
-          // Extract bundle hash from fresh HTML
-          const freshMatch = freshHtml.match(/main\.([a-f0-9]+)\.js/);
-          if (!freshMatch) {
-            console.log('Could not extract hash from HTML');
-            return;
-          }
+          if (!thisMatch || !serverMatch) return;
 
-          const freshHash = freshMatch[1];
-          const storedHash = localStorage.getItem('flashy_hash');
-
-          console.log('Fresh hash:', freshHash);
-          console.log('Stored hash:', storedHash);
-
-          // First load - store hash and continue
-          if (!storedHash) {
-            localStorage.setItem('flashy_hash', freshHash);
-            console.log('✅ First load, hash stored');
-            return;
-          }
-
-          // Hash mismatch = stale code
-          if (storedHash !== freshHash) {
-            console.log('🚨 STALE CODE DETECTED! Clearing everything...');
-
-            // Mark that we're about to refresh (prevents infinite loop)
-            sessionStorage.setItem('flashy_refreshed', 'true');
-
-            // Clear localStorage (keeps sessionStorage.flashy_refreshed)
-            const oldAuth = {
-              user_id: localStorage.getItem('flashy_user_id'),
-              username: localStorage.getItem('flashy_username')
-            };
-            localStorage.clear();
-            // Restore auth so user doesn't have to re-login
-            if (oldAuth.user_id) localStorage.setItem('flashy_user_id', oldAuth.user_id);
-            if (oldAuth.username) localStorage.setItem('flashy_username', oldAuth.username);
-
-            // Store new hash
-            localStorage.setItem('flashy_hash', freshHash);
+          if (thisMatch[1] !== serverMatch[1]) {
+            console.log('[Flashy] New version available:', thisMatch[1], '->', serverMatch[1]);
+            sessionStorage.setItem('flashy_last_reload', Date.now().toString());
 
             // Clear IndexedDB
-            if ('indexedDB' in window) {
-              const dbs = await indexedDB.databases();
-              for (const db of dbs) {
-                if (db.name) indexedDB.deleteDatabase(db.name);
+            if ('indexedDB' in window && typeof indexedDB.databases === 'function') {
+              var dbs = await indexedDB.databases();
+              for (var i = 0; i < dbs.length; i++) {
+                if (dbs[i].name) indexedDB.deleteDatabase(dbs[i].name);
               }
             }
 
             // Clear HTTP caches
             if ('caches' in window) {
-              const names = await caches.keys();
-              await Promise.all(names.map(n => caches.delete(n)));
+              var names = await caches.keys();
+              await Promise.all(names.map(function(n) { return caches.delete(n); }));
             }
 
-            console.log('🔄 Force reloading with fresh code...');
             window.location.reload(true);
-          } else {
-            console.log('✅ Code is fresh');
           }
         } catch (e) {
-          console.error('❌ Cache check failed:', e);
+          // Network error — continue with current code
         }
       })();
     </script>
